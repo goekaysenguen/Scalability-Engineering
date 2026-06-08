@@ -2,6 +2,8 @@
 
 NODE_INDEX='${node_index}'
 CLUSTER_SIZE='${cluster_size}'
+LOADBALANCER_PORT='${loadbalancer_port}'
+API_PORT='${api_port}'
 API_SERVERS_JSON='${api_servers_json}'
 
 install_docker() {
@@ -67,12 +69,12 @@ EOF
 EOF
 
     docker pull nginx:1.31.1
-    docker run -d -p 80:8000 -v /opt/scalability-engineering/nginx.conf:/etc/nginx/nginx.conf:ro nginx:1.31.1
+    docker run -d -p "$LOADBALANCER_PORT":8000 -v /opt/scalability-engineering/nginx.conf:/etc/nginx/nginx.conf:ro nginx:1.31.1
 }
 
 start_stateless() {
     docker pull ghcr.io/goekaysenguen/scalability-engineering/api:latest
-    docker run -d -p 8001:8000 ghcr.io/goekaysenguen/scalability-engineering/api:latest
+    docker run -d -p "$API_PORT":8000 ghcr.io/goekaysenguen/scalability-engineering/api:latest
 }
 
 install_docker

@@ -9,7 +9,7 @@ locals {
 
   api_servers_json = jsonencode([
     for ip in local.api_ips : {
-      url = "http://${ip}:8001"
+      url = "http://${ip}:${var.api_port}"
     }
   ])
 }
@@ -85,6 +85,8 @@ resource "google_compute_instance" "vm" {
   metadata_startup_script = templatefile("${path.module}/startup.sh.tpl", {
     node_index   = count.index
     cluster_size = var.cluster_size
+    loadbalancer_port = var.loadbalancer_port
+    api_port     = var.api_port
     api_servers_json = local.api_servers_json
   })
 }

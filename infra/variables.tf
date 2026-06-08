@@ -20,6 +20,21 @@ variable "machine_type" {
   default     = "e2-medium"
 }
 
+
+variable "loadbalancer_port" {
+  description = "On what port the loadbalancer should run"
+  type        = number
+  default      = 80
+}
+
+
+variable "api_port" {
+  description = "On what port the api should run"
+  type        = number
+  default     = 8001
+}
+
+
 variable "region" {
   type    = string
   default = "europe-west3"
