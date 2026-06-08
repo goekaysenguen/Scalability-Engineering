@@ -1,10 +1,17 @@
-FROM --platform=linux/amd64 python:3.14-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY main.py .
+# PYTHONUNBUFFERED sorgt dafür, dass print() sofort im Docker-Log erscheint!
+ENV PYTHONUNBUFFERED=1 
 
-RUN pip install --no-cache-dir fastapi uvicorn
+# Installiere System-Abhängigkeiten (für psycopg2 / Postgres)
+RUN apt-get update && apt-get install -y libpq-dev gcc && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY main.py .
 
 EXPOSE 8000
 
