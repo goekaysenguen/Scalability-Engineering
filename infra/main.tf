@@ -88,5 +88,6 @@ resource "google_compute_instance" "vm" {
     loadbalancer_port = var.loadbalancer_port
     api_port     = var.api_port
     api_servers_json = local.api_servers_json
+    stateful_ip       = local.node_ips[0] # IP of Node 0
   })
 }

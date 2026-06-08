@@ -5,6 +5,7 @@ CLUSTER_SIZE='${cluster_size}'
 LOADBALANCER_PORT='${loadbalancer_port}'
 API_PORT='${api_port}'
 API_SERVERS_JSON='${api_servers_json}'
+STATEFUL_IP='${stateful_ip}'
 
 install_docker() {
     echo "Installing docker" >> /var/log/startup-script.log
@@ -32,7 +33,19 @@ EOF
 }
 
 start_stateful() {
-    echo "In start_stateful" >> /var/log/startup-script.log
+    echo "Starting stateful components (Postgres & Redis)" >> /var/log/startup-script.log
+    
+    # Postgres
+    docker run -d --name postgres -p 5432:5432 \
+      -e POSTGRES_DB=scalability \
+      -e POSTGRES_USER=postgres \
+      -e POSTGRES_PASSWORD=postgres \
+      postgres:15-alpine
+
+    # Redis
+    docker run -d --name redis -p 6379:6379 redis:7-alpine
+
+    # Nginx
     sudo apt install -y jq
     mkdir -p /opt/scalability-engineering
 
@@ -73,8 +86,24 @@ EOF
 }
 
 start_stateless() {
-    docker pull ghcr.io/goekaysenguen/scalability-engineering/api:latest
-    docker run -d -p "$API_PORT":8000 ghcr.io/goekaysenguen/scalability-engineering/api:latest
+    echo "Starting stateless components (API & Worker)" >> /var/log/startup-script.log
+    
+    # API
+    docker pull ghcr.io/lpusch/api:latest
+    docker run -d --name api -p "$API_PORT":8000 \
+      --restart always \
+      -e DB_HOST="$STATEFUL_IP" \
+      -e REDIS_HOST="$STATEFUL_IP" \
+      ghcr.io/lpusch/api:latest
+
+    # Worker
+    docker pull ghcr.io/lpusch/worker:latest
+    docker run -d --name worker \
+      --restart always \
+      -e DB_HOST="$STATEFUL_IP" \
+      -e REDIS_HOST="$STATEFUL_IP" \
+      ghcr.io/lpusch/worker:latest
+
 }
 
 install_docker
