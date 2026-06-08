@@ -1,22 +1,44 @@
-# only for local testing
 services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=scalability
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   api-1:
-    build:
+    build: 
       context: ./api
-    container_name: api-1
-    expose:
-      - "8000"
+    environment:
+      - REDIS_HOST=redis
+      - DB_HOST=postgres
+    depends_on: [redis, postgres]
 
   api-2:
-    build:
+    build: 
       context: ./api
-    container_name: api-2
-    expose:
-      - "8000"
+    environment:
+      - REDIS_HOST=redis
+      - DB_HOST=postgres
+    depends_on: [redis, postgres]
+
+  worker:
+    build: 
+      context: ./worker
+    environment:
+      - REDIS_HOST=redis
+      - DB_HOST=postgres
+    depends_on: [redis, postgres]
 
   loadbalancer:
-    image: nginx:latest
-    container_name: loadbalancer
+    image: nginx:1.31.1
     ports:
       - "8000:8000"
     volumes:
