@@ -1,0 +1,27 @@
+# only for local testing
+services:
+  api-1:
+    build:
+      context: ./api
+    container_name: api-1
+    expose:
+      - "8000"
+
+  api-2:
+    build:
+      context: ./api
+    container_name: api-2
+    expose:
+      - "8000"
+
+  loadbalancer:
+    build:
+      context: ./loadbalancer
+    container_name: loadbalancer
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./loadbalancer/servers.json:/app/servers.json:ro
+    depends_on:
+      - api-1
+      - api-2

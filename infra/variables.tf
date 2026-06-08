@@ -1,0 +1,31 @@
+variable "project_id" {
+  description = "Google Cloud Console Project Id"
+  type        = string
+  default     = "scalability-engineering"
+}
+
+variable "cluster_size" {
+  description = "Number of VMs in the deployment, choose between 1, 3, 5."
+  type        = number
+
+  validation {
+    condition     = contains([1, 3, 5], var.cluster_size)
+    error_message = "cluster_size must be one of: 1, 3, 5."
+  }
+}
+
+variable "machine_type" {
+  description = "GCP machine type for all VMs"
+  type        = string
+  default     = "e2-medium"
+}
+
+variable "region" {
+  type    = string
+  default = "europe-west3"
+}
+
+variable "zone" {
+  type    = string
+  default = "europe-west3-a"
+}
