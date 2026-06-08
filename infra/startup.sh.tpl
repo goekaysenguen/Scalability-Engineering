@@ -31,12 +31,43 @@ EOF
 
 start_stateful() {
     echo "In start_stateful" >> /var/log/startup-script.log
+    sudo apt install -y jq
     mkdir -p /opt/scalability-engineering
-    cd /opt/scalability-engineering
-    echo "$API_SERVERS_JSON" > servers.json
 
-    docker pull ghcr.io/goekaysenguen/scalability-engineering/loadbalancer:latest
-    docker run -v /opt/scalability-engineering/servers.json:/app/servers.json:ro -d -p 80:8000 ghcr.io/goekaysenguen/scalability-engineering/loadbalancer:latest
+    cat > /opt/scalability-engineering/nginx.conf <<EOF
+events {}
+
+http {
+    upstream backend_servers {
+EOF
+
+    echo "$API_SERVERS_JSON" \
+      | jq -r '.[].url' \
+      | sed -E 's#^https?://##' \
+      | while read server; do
+            echo "        server $server;" >> /opt/scalability-engineering/nginx.conf
+        done
+
+    cat >> /opt/scalability-engineering/nginx.conf <<'EOF'
+    }
+
+    server {
+        listen 8000;
+
+        location / {
+            proxy_pass http://backend_servers;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
+EOF
+
+    docker pull nginx:1.31.1
+    docker run -d -p 80:8000 -v /opt/scalability-engineering/nginx.conf:/etc/nginx/nginx.conf:ro nginx:1.31.1
 }
 
 start_stateless() {
