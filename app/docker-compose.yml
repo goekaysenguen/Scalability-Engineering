@@ -19,6 +19,11 @@ services:
     environment:
       - REDIS_HOST=redis
       - DB_HOST=postgres
+      - MAX_API_CAPACITY=50
+      # Da Redis global ist, muss dieser Wert die Kapazität des gesamten Clusters spiegeln!
+      # Little's Law: MAX_QUEUE_SIZE = Max_Age (15s) * (Workers * Throughput_per_Worker)
+      # 45 = 15s * (1 * 2/s)            (worker schaffen ca. 2 Bilder / sec mit Runterladen und classification)
+      - MAX_GLOBAL_QUEUE_SIZE=30
     depends_on: [redis, postgres]
 
   api-2:
@@ -27,6 +32,8 @@ services:
     environment:
       - REDIS_HOST=redis
       - DB_HOST=postgres
+      - MAX_API_CAPACITY=50
+      - MAX_GLOBAL_QUEUE_SIZE=45
     depends_on: [redis, postgres]
 
   worker:

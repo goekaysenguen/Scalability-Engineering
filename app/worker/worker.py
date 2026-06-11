@@ -23,6 +23,10 @@ DB_NAME = os.getenv("DB_NAME", "scalability")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASS = os.getenv("DB_PASS", "postgres")
 
+# Wie lange darf ein Task maximal in der Queue liegen? (in Sekunden)
+MAX_QUEUE_AGE_SECONDS = 15
+
+
 # --- INITIALISIERUNG (Einmalig beim Start) ---
 print("Lade MobileNetV3 Modell in den Speicher... Das passiert nur einmal!")
 # WICHTIG: Modell außerhalb der Schleife laden, um Memory Leaks und Latenz zu vermeiden (Constant Work)
@@ -64,12 +68,23 @@ def predict_image(img):
 def process_task(task):
     task_id = task.get("task_id")
     image_url = task.get("image_url")
+    enqueued_at = task.get("enqueued_at", 0)
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
-        # 1. IDEMPOTENCY CHECK
+        # 1. MESSAGE AGE CHECK (Dropping old messages)
+        # Ref: Amazon Builders' Library - "Avoiding insurmountable queue backlogs"
+        time_in_queue = time.time() - enqueued_at
+        if time_in_queue > MAX_QUEUE_AGE_SECONDS:
+            print(f"Task {task_id} ist zu alt ({time_in_queue:.1f}s > {MAX_QUEUE_AGE_SECONDS}s). Verwerfe Task (Wasted Work Prevention)!")
+            cursor.execute("UPDATE tasks SET status = 'failed', result = 'timeout in queue' WHERE id = %s", (task_id,))
+            conn.commit()
+            return # Bricht ab, KI wird nicht ausgeführt!
+
+        # 2. IDEMPOTENCY CHECK
+
         # Prüfen, ob der Task schon bearbeitet wurde (verhindert doppelte Arbeit bei Retries)
         cursor.execute("SELECT status FROM tasks WHERE id = %s", (task_id,))
         row = cursor.fetchone()
@@ -86,8 +101,8 @@ def process_task(task):
         cursor.execute("UPDATE tasks SET status = 'processing' WHERE id = %s", (task_id,))
         conn.commit()
 
-        # 2. BILD LADEN & VERARBEITEN
-        print(f"Bearbeite Task {task_id}: Lade Bild von {image_url}...")
+        # 3. BILD LADEN & VERARBEITEN
+        print(f"Bearbeite Task {task_id} (Zeit in Queue: {time_in_queue:.1f}s)...")
         img = download_image(image_url)
         
         print("Starte Inferenz...")
@@ -95,7 +110,7 @@ def process_task(task):
         result_string = predict_image(img)
         print(f"Inferenz beendet in {time.time() - start_time:.2f}s. Ergebnis: {result_string}")
 
-        # 3. ERGEBNIS SPEICHERN
+        # 4. ERGEBNIS SPEICHERN
         cursor.execute(
             "UPDATE tasks SET status = 'completed', result = %s WHERE id = %s",
             (result_string, task_id)

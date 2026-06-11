@@ -3,22 +3,32 @@ import json
 import uuid
 import time
 import psycopg2
-from psycopg2 import pool
 import redis
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+from collections import defaultdict
 
 # --- KONFIGURATION ---
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 
-# --- LOAD SHEDDING / BACKPRESSURE CONFIG ---
-MAX_CONCURRENT_REQUESTS = 50  # Max parallele API-Requests (Vermeidung von Thread-Exhaustion)
-MAX_QUEUE_SIZE = 100          # Backpressure: Max erlaubte Bilder in der Queue
-current_requests = 0
+# --- MULTI-TENANT FAIRNESS & LOAD SHEDDING ---
+# Er repräsentiert die Kapazität EINER API-Node.
+GLOBAL_MAX_REQUESTS = int(os.getenv("MAX_API_CAPACITY", 50))
 
-# --- GLOBALE VARIABLEN ---
+CLIENT_SOFT_LIMIT         = GLOBAL_MAX_REQUESTS * 0.2  # Ein Client darf immer 20% Requests haben
+CLIENT_BURST_LIMIT        = GLOBAL_MAX_REQUESTS * 0.5  # Ein Client darf bis 50% haben, NUR bei weniger Gesamtlast
+GLOBAL_THROTTLE_THRESHOLD = GLOBAL_MAX_REQUESTS * 0.8  # Ab 80% Requests im System werden Soft Limits erzwungen
+
+# Little's Law: MAX_QUEUE_SIZE = Max_Age (15s) * (Workers * Throughput_per_Worker)
+# Da Redis global ist, muss dieser Wert die Kapazität des gesamten Clusters spiegeln!
+MAX_QUEUE_SIZE = int(os.getenv("MAX_GLOBAL_QUEUE_SIZE", 45))
+
+# Concurrency Tracker
+active_requests = 0
+client_requests = defaultdict(int)
+
 db_pool = None
 r = None
 
@@ -76,19 +86,37 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# --- MIDDLEWARE FÜR CONCURRENCY LOAD SHEDDING ---
+# --- MIDDLEWARE FÜR MULTI-TENANT FAIRNESS AND LOAD SHEDDING ---
 @app.middleware("http")
-async def load_shedding_middleware(request: Request, call_next):
-    global current_requests
-    if current_requests >= MAX_CONCURRENT_REQUESTS:
-        return Response(content="System overloaded (Concurrency limit). Please retry with backoff.", status_code=503)
+async def multi_tenant_fairness_middleware(request: Request, call_next):
+    global active_requests, client_requests
     
-    current_requests += 1
+    client_id = request.headers.get("X-Client-ID", "unknown_client")
+    
+    # 1. Globales Hard Limit (Verhindert Node-Absturz)
+    if active_requests >= GLOBAL_MAX_REQUESTS:
+        return Response(content="System overloaded.", status_code=503)
+    
+    client_count = client_requests[client_id]
+    
+    # 2. Client Hard Burst Limit (Noisy Neighbor Protection)
+    if client_count >= CLIENT_BURST_LIMIT:
+        return Response(content="Client burst quota exceeded.", status_code=429) # 429 = Too Many Requests
+        
+    # 3. Client Soft Limit (Greift nur, wenn das Gesamtsystem unter Last steht!)
+    if client_count >= CLIENT_SOFT_LIMIT and active_requests >= GLOBAL_THROTTLE_THRESHOLD:
+        return Response(content="System under heavy load. Client soft quota exceeded.", status_code=429)
+
+    # Request zulassen
+    active_requests += 1
+    client_requests[client_id] += 1
+
     try:
         response = await call_next(request)
         return response
     finally:
-        current_requests -= 1
+        active_requests -= 1
+        client_requests[client_id] -= 1
 
 
 # --- API ENDPUNKTE ---
@@ -122,8 +150,12 @@ def classify_image(req: ImageRequest):
         conn.commit()
         cursor.close()
         
-        # In die Redis Queue legen
-        task_payload = {"task_id": task_id, "image_url": req.image_url}
+        # WICHTIG: Timestamp hinzufügen für die Worker TTL Logik!
+        task_payload = {
+            "task_id": task_id, 
+            "image_url": req.image_url,
+            "enqueued_at": time.time()
+        }
         r.lpush("image_tasks", json.dumps(task_payload))
         
     except Exception as e:
