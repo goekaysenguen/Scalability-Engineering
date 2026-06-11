@@ -37,7 +37,7 @@ def get_db_connection():
     """Baut eine Verbindung zur Datenbank auf."""
     return psycopg2.connect(
         host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS,
-        connect_timeout=5 # Bounded Work: Timeout setzen!
+        connect_timeout=5
     )
 
 def download_image(url):
@@ -65,15 +65,14 @@ def predict_image(img):
     best_match = results[0][1] 
     return best_match
 
-def process_task(task):
+def process_task(task, conn):
     task_id = task.get("task_id")
     image_url = task.get("image_url")
     enqueued_at = task.get("enqueued_at", 0)
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
     try:
+        cursor = conn.cursor()
+
         # 1. MESSAGE AGE CHECK (Dropping old messages)
         # Ref: Amazon Builders' Library - "Avoiding insurmountable queue backlogs"
         time_in_queue = time.time() - enqueued_at
@@ -81,7 +80,7 @@ def process_task(task):
             print(f"Task {task_id} ist zu alt ({time_in_queue:.1f}s > {MAX_QUEUE_AGE_SECONDS}s). Verwerfe Task (Wasted Work Prevention)!")
             cursor.execute("UPDATE tasks SET status = 'failed', result = 'timeout in queue' WHERE id = %s", (task_id,))
             conn.commit()
-            return # Bricht ab, KI wird nicht ausgeführt!
+            return
 
         # 2. IDEMPOTENCY CHECK
 
@@ -118,20 +117,41 @@ def process_task(task):
         conn.commit()
         print(f"Task {task_id} erfolgreich abgeschlossen.")
 
+    except psycopg2.InterfaceError:
+        # Diesen spezifischen Fehler werfen wir weiter, damit die main()-Schleife einen Reconnect macht!
+        raise
     except Exception as e:
         print(f"Fehler bei Task {task_id}: {e}")
+        # Rollback ist wichtig, wenn Transaktion vor commit Fehlschlägt!
+        conn.rollback()
+        
         # Bei Fehler Status auf 'failed' setzen, damit die API weiß, was los ist
-        cursor.execute("UPDATE tasks SET status = 'failed', result = %s WHERE id = %s", (str(e), task_id))
-        conn.commit()
+        try:
+            cursor.execute("UPDATE tasks SET status = 'failed', result = %s WHERE id = %s", (str(e), task_id))
+            conn.commit()
+        except Exception as inner_e:
+            print(f"Konnte Fehler nicht in DB speichern: {inner_e}")
+            conn.rollback()
     finally:
-        cursor.close()
-        conn.close()
+        if 'cursor' in locals() and cursor is not None:
+            cursor.close()
 
 def main():
     # Timeout für Redis Connection
     r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True, socket_connect_timeout=5)
     
     print("AI Worker ist gestartet und wartet auf Aufgaben...")
+    
+    # Initiale Datenbankverbindung aufbauen (Persistent Connection)
+    db_conn = None
+    while db_conn is None:
+        try:
+            db_conn = get_db_connection()
+            print("Erfolgreich zur Datenbank verbunden!")
+        except Exception as e:
+            print(f"Warte auf Datenbank... {e}")
+            time.sleep(2)
+
     while True:
         try:
             # Blockierendes Pop aus der Liste. Wartet maximal 5 Sekunden auf neue Elemente.
@@ -141,11 +161,29 @@ def main():
             if item:
                 _, data = item
                 task = json.loads(data)
-                process_task(task)
+                
+                # Wir übergeben die offene Verbindung an die Funktion
+                process_task(task, db_conn)
                 
         except redis.ConnectionError:
             print("Verbindung zu Redis verloren. Versuche es in 5 Sekunden erneut...")
             time.sleep(5)
+        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+            # Wenn die DB-Verbindung abreißt (z.B. Postgres-Container neu gestartet)
+            print("Datenbankverbindung verloren! Versuche Reconnect...")
+            try:
+                db_conn.close()
+            except:
+                pass
+            
+            # Reconnect-Schleife
+            db_conn = None
+            while db_conn is None:
+                try:
+                    db_conn = get_db_connection()
+                    print("Reconnect zur Datenbank erfolgreich!")
+                except Exception:
+                    time.sleep(2)
         except Exception as e:
             print(f"Unerwarteter Fehler in der Main-Loop: {e}")
             time.sleep(1)
