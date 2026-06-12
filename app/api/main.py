@@ -222,6 +222,10 @@ def classify_image(req: ImageRequest):
         }
         r.lpush(REDIS_QUEUE_NAME, json.dumps(task_payload))
 
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
     except Exception as e:
         if conn:
             conn.rollback()
@@ -248,7 +252,13 @@ def get_status(task_id: str):
             raise HTTPException(status_code=404, detail="Task not found")
         
         return {"task_id": task_id, "status": row[0], "result": row[1]}
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
     except Exception as e:
+        if conn:
+            conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if conn:
