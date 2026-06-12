@@ -62,24 +62,23 @@ def setup_db_and_pool():
             # Autocommit einschalten, damit wir DDL-Fehler sauber catchen können,
             # ohne die laufende Transaktion zu blockieren.
             conn.autocommit = True 
-            cursor = conn.cursor()
             
-            try:
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS tasks (
-                        id VARCHAR(50) PRIMARY KEY,
-                        status VARCHAR(20),
-                        image_url TEXT,
-                        result TEXT,
-                        enqueued_at FLOAT
-                    )
-                """)
-            except UniqueViolation:
-                # Falls trotz Jitter eine Kollision auftritt (weil Postgres IF NOT EXISTS intern so verarbeitet),
-                # ignorieren wir diesen spezifischen Fehler einfach, da es bedeutet, dass die Tabelle existiert.
-                print(f"[{hostname}] Tabelle wurde zeitgleich von einer anderen Node erstellt. Ignoriere Fehler.")
+            with conn.cursor() as cursor:
+                try:
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS tasks (
+                            id VARCHAR(50) PRIMARY KEY,
+                            status VARCHAR(20),
+                            image_url TEXT,
+                            result TEXT,
+                            enqueued_at FLOAT
+                        )
+                    """)
+                except UniqueViolation:
+                    # Falls trotz Jitter eine Kollision auftritt (weil Postgres IF NOT EXISTS intern so verarbeitet),
+                    # ignorieren wir diesen spezifischen Fehler einfach, da es bedeutet, dass die Tabelle existiert.
+                    print(f"[{hostname}] Tabelle wurde zeitgleich von einer anderen Node erstellt. Ignoriere Fehler.")
             
-            cursor.close()
             conn.autocommit = False
             conn.close()
 
@@ -206,15 +205,14 @@ def classify_image(req: ImageRequest):
     try:
         # Verbindung aus dem Pool holen (extrem schnell, kein Handshake nötig)
         conn = acquire_db_conn()
-        cursor = conn.cursor()
         
         # In DB speichern
-        cursor.execute(
-            "INSERT INTO tasks (id, status, image_url) VALUES (%s, 'pending', %s)",
-            (task_id, req.image_url)
-        )
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO tasks (id, status, image_url) VALUES (%s, 'pending', %s)",
+                (task_id, req.image_url)
+            )
         conn.commit()
-        cursor.close()
         
         # WICHTIG: Timestamp hinzufügen für die Worker TTL Logik!
         task_payload = {
@@ -241,10 +239,10 @@ def get_status(task_id: str):
     conn = None
     try:
         conn = acquire_db_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT status, result FROM tasks WHERE id = %s", (task_id,))
-        row = cursor.fetchone()
-        cursor.close()
+        
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT status, result FROM tasks WHERE id = %s", (task_id,))
+            row = cursor.fetchone()
 
         if not row:
             raise HTTPException(status_code=404, detail="Task not found")
