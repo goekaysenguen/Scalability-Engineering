@@ -14,17 +14,16 @@ from tensorflow.keras.applications.mobilenet_v3 import preprocess_input, decode_
 from tensorflow.keras.preprocessing import image as keras_image
 
 # --- KONFIGURATION ---
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_HOST = os.getenv("REDIS_HOST", None)
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-REDIS_QUEUE_NAME = "image_tasks"
+REDIS_QUEUE_NAME = os.getenv("REDIS_QUEUE_NAME", "image_tasks")
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "scalability")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "postgres")
+DB_HOST = os.getenv("DB_HOST", None)
+DB_NAME = os.getenv("DB_NAME", None)
+DB_USER = os.getenv("DB_USER", None)
+DB_PASS = os.getenv("DB_PASSWORD", None)
 
-# Wie lange darf ein Task maximal in der Queue liegen? (in Sekunden)
-MAX_QUEUE_AGE_SECONDS = 15
+MAX_QUEUE_AGE_SECONDS = int(os.getenv("MAX_QUEUE_AGE_SECONDS", 15))
 
 
 # --- INITIALISIERUNG (Einmalig beim Start) ---

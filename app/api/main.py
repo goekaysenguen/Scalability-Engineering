@@ -14,20 +14,19 @@ from contextlib import asynccontextmanager
 from collections import defaultdict
 
 # --- KONFIGURATION ---
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-DB_HOST = os.getenv("DB_HOST", "localhost")
+REDIS_HOST = os.getenv("REDIS_HOST", None)
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_QUEUE_NAME = os.getenv("REDIS_QUEUE_NAME", "image_tasks")
+MAX_QUEUE_SIZE = int(os.getenv("MAX_GLOBAL_QUEUE_SIZE", 45))
 
-# --- MULTI-TENANT FAIRNESS & LOAD SHEDDING ---
-# Er repräsentiert die Kapazität EINER API-Node.
+DB_HOST = os.getenv("DB_HOST", None)
+
+# For fairness & load shedding
 GLOBAL_MAX_REQUESTS = int(os.getenv("MAX_API_CAPACITY", 50))
 
 CLIENT_SOFT_LIMIT         = GLOBAL_MAX_REQUESTS * 0.2  # Ein Client darf immer 20% Requests haben
 CLIENT_BURST_LIMIT        = GLOBAL_MAX_REQUESTS * 0.5  # Ein Client darf bis 50% haben, NUR bei weniger Gesamtlast
 GLOBAL_THROTTLE_THRESHOLD = GLOBAL_MAX_REQUESTS * 0.8  # Ab 80% Requests im System werden Soft Limits erzwungen
-
-# Little's Law: MAX_QUEUE_SIZE = Max_Age (15s) * (Workers * Throughput_per_Worker)
-# Da Redis global ist, muss dieser Wert die Kapazität des gesamten Clusters spiegeln!
-MAX_QUEUE_SIZE = int(os.getenv("MAX_GLOBAL_QUEUE_SIZE", 45))
 
 # Concurrency Tracker
 active_requests = 0
@@ -35,6 +34,7 @@ client_requests = defaultdict(int)
 
 db_pool = None
 r = None
+
 
 def setup_db_and_pool():
     global db_pool
@@ -83,11 +83,11 @@ def setup_db_and_pool():
             # 2. Connection Pool erstellen
             db_pool = pool.ThreadedConnectionPool(
                 minconn=1,
-                maxconn=20, # Maximal 20 Verbindungen gleichzeitig offen halten
-                host=DB_HOST,
-                database="scalability",
-                user="postgres",
-                password="postgres"
+                maxconn=int(os.getenv("DB_MAX_CONN", 20)),
+                host=os.getenv("DB_HOST", None),
+                database=os.getenv("DB_NAME", None),
+                user=os.getenv("DB_USER", None),
+                password=os.getenv("DB_PASSWORD", None)
             )
             print(f"[{hostname}] Datenbank-Setup und Connection Pool erfolgreich initialisiert!")
             return
@@ -102,7 +102,7 @@ def setup_db_and_pool():
 async def lifespan(app: FastAPI):
     global r, db_pool
     setup_db_and_pool()
-    r = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
+    r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
     yield
     # Beim Beenden der API sauber aufräumen
     if db_pool:
@@ -155,7 +155,7 @@ def classify_image(req: ImageRequest):
     
     # BACKPRESSURE: Prüfen, ob die Queue zu voll ist ("Avoiding insurmountable queue backlogs")
     try:
-        queue_length = r.llen("image_tasks")
+        queue_length = r.llen(REDIS_QUEUE_NAME)
         if queue_length >= MAX_QUEUE_SIZE:
             return Response(content="Queue is full (Backpressure limit). Please retry later.", status_code=503)
     except redis.RedisError as e:
@@ -182,7 +182,7 @@ def classify_image(req: ImageRequest):
             "image_url": req.image_url,
             "enqueued_at": time.time()
         }
-        r.lpush("image_tasks", json.dumps(task_payload))
+        r.lpush(REDIS_QUEUE_NAME, json.dumps(task_payload))
         
     except Exception as e:
         if conn:

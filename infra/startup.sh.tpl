@@ -88,12 +88,21 @@ EOF
 start_stateless() {
     echo "Starting stateless components (API & Worker)" >> /var/log/startup-script.log
     
+    # TODO: einige ENV-variablen in variables.tf schreiben damit wir nicht zweimal angeben müssen?
     # API
     docker pull ghcr.io/lpusch/api:latest
     docker run -d --name api -p "$API_PORT":8000 \
       --restart always \
       -e DB_HOST="$STATEFUL_IP" \
+      -e DB_USER="postgres" \
+      -e DB_PASSWORD="postgres" \
+      -e DB_NAME="scalability" \
       -e REDIS_HOST="$STATEFUL_IP" \
+      -e REDIS_PORT="6379" \
+      -e REDIS_QUEUE_NAME="image_tasks" \
+      -e MAX_API_CAPACITY="50" \
+      -e DB_MAX_CONN="20" \
+      -e MAX_GLOBAL_QUEUE_SIZE="30" \
       ghcr.io/lpusch/api:latest
 
     # Worker
@@ -101,7 +110,13 @@ start_stateless() {
     docker run -d --name worker \
       --restart always \
       -e DB_HOST="$STATEFUL_IP" \
+      -e DB_USER="postgres" \
+      -e DB_PASSWORD="postgres" \
+      -e DB_NAME="scalability" \
       -e REDIS_HOST="$STATEFUL_IP" \
+      -e REDIS_PORT="6379" \
+      -e REDIS_QUEUE_NAME="image_tasks" \
+      -e MAX_QUEUE_AGE_SECONDS="15" \
       ghcr.io/lpusch/worker:latest
 
 }

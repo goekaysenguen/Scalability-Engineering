@@ -1,10 +1,30 @@
+# YAML Anchors
+x-common-env: &common-env
+  DB_HOST: postgres             # Required STRING (none). Hostname of PostgreSQL-DB. Format: <string>
+  DB_USER: postgres             # Required STRING (postgres). Username for target database. Format: <string>
+  DB_PASSWORD: postgres         # Required STRING (postgres). Password for target database. Format: <string>
+  DB_NAME: scalability          # Required STRING (scalability). Name of the target database. Format: <string>
+  REDIS_HOST: redis             # Required STRING (none). Hostname of Redis-Servers for the task-queue. Format: <string>
+
+  REDIS_PORT: 6379              # Optional INTEGER (6379). Port of the Redis-Server. Format: <integer>
+  REDIS_QUEUE_NAME: image_tasks # Optional STRING (image_tasks). Queue-name in redis. Format: <string>
+
+x-api-env: &api-env
+  <<: *common-env
+  # optional but recommended to adjust to your system for performance
+  MAX_API_CAPACITY: 50      # Optional INTEGER (50). Maximal amount of concurrent requests one API-Instance should handle. Format: <integer>
+  DB_MAX_CONN: 20           # Optional INTEGER (20). Maximum number of open DB connections in the pool (best practice: less than MAX_API_CAPACITY). Format: <integer>
+  MAX_GLOBAL_QUEUE_SIZE: 30 # Optional INTEGER (30). Global queue-capacity of entire cluster  (Little's Law: Max_Age_In_Queue * #Workers * Throughput). <integer>
+                            # e.g.: 30 = 15s * (1 * 2/s)        (Workers process approx. 2 images/sec, including downloading and classification)
+
+# Services
 services:
   postgres:
     image: postgres:15-alpine
     environment:
-      - POSTGRES_DB=scalability
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      POSTGRES_USER: postgres     # Required STRING (postgres). Initial superuser-name for the DB. Format: <string>
+      POSTGRES_PASSWORD: postgres # Required STRING (postgres). Initial password for superuser. Format: <string>
+      POSTGRES_DB: scalability    # Required STRING (scalability). Initial name of PostgreSQL-DB. Format: <string>
     ports:
       - "5432:5432"
 
@@ -17,37 +37,34 @@ services:
     build: 
       context: ./api
     environment:
-      - REDIS_HOST=redis
-      - DB_HOST=postgres
-      - MAX_API_CAPACITY=50
-      # Da Redis global ist, muss dieser Wert die Kapazität des gesamten Clusters spiegeln!
-      # Little's Law: MAX_QUEUE_SIZE = Max_Age (15s) * (Workers * Throughput_per_Worker)
-      # 45 = 15s * (1 * 2/s)            (worker schaffen ca. 2 Bilder / sec mit Runterladen und classification)
-      - MAX_GLOBAL_QUEUE_SIZE=30
-    depends_on: [redis, postgres]
+      <<: *api-env
+    depends_on:
+      - redis
+      - postgres
 
   api-2:
     build: 
       context: ./api
     environment:
-      - REDIS_HOST=redis
-      - DB_HOST=postgres
-      - MAX_API_CAPACITY=50
-      - MAX_GLOBAL_QUEUE_SIZE=45
-    depends_on: [redis, postgres]
+      <<: *api-env
+    depends_on:
+      - redis
+      - postgres
 
   worker:
     build: 
       context: ./worker
     environment:
-      - REDIS_HOST=redis
-      - DB_HOST=postgres
-    depends_on: [redis, postgres]
+      <<: *common-env
+      MAX_QUEUE_AGE_SECONDS: 15 # Optional INTEGER (15). Maximum amount of time a task can remain in the queue. Format: <integer>
+    depends_on:
+      - redis
+      - postgres
 
   loadbalancer:
     image: nginx:1.31.1
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - ./loadbalancer/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
