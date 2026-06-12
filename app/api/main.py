@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from collections import defaultdict
+import threading
 
 # --- KONFIGURATION ---
 REDIS_HOST = os.getenv("REDIS_HOST", None)
@@ -20,6 +21,7 @@ REDIS_QUEUE_NAME = os.getenv("REDIS_QUEUE_NAME", "image_tasks")
 MAX_QUEUE_SIZE = int(os.getenv("MAX_GLOBAL_QUEUE_SIZE", 45))
 
 DB_HOST = os.getenv("DB_HOST", None)
+DB_MAX_CONN = int(os.getenv("DB_MAX_CONN", 20))
 
 # For fairness & load shedding
 GLOBAL_MAX_REQUESTS = int(os.getenv("MAX_API_CAPACITY", 50))
@@ -33,6 +35,7 @@ active_requests = 0
 client_requests = defaultdict(int)
 
 db_pool = None
+db_semaphore = threading.BoundedSemaphore(DB_MAX_CONN)
 r = None
 
 
@@ -83,7 +86,7 @@ def setup_db_and_pool():
             # 2. Connection Pool erstellen
             db_pool = pool.ThreadedConnectionPool(
                 minconn=1,
-                maxconn=int(os.getenv("DB_MAX_CONN", 20)),
+                maxconn=DB_MAX_CONN,
                 host=os.getenv("DB_HOST", None),
                 database=os.getenv("DB_NAME", None),
                 user=os.getenv("DB_USER", None),
@@ -96,6 +99,43 @@ def setup_db_and_pool():
             time.sleep(2 + random.uniform(0.0, 1.0))
             
     print("FATAL: Konnte nach mehreren Versuchen keine Verbindung zur Datenbank herstellen.")
+
+def acquire_db_conn():
+    """
+    Wartet kontrolliert auf eine freie DB-Verbindung.
+    Gibt 503 zurück, wenn innerhalb des Timeouts keine Verbindung verfügbar ist.
+    """
+    acquired = db_semaphore.acquire(timeout=2)
+
+    if not acquired:
+        raise HTTPException(
+            status_code=503,
+            detail="Database busy. Please retry later."
+        )
+
+    try:
+        conn = db_pool.getconn()
+        return conn
+    except pool.PoolError:
+        db_semaphore.release()
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection pool exhausted. Please retry later."
+        )
+    except Exception:
+        db_semaphore.release()
+        raise
+
+def release_db_conn(conn):
+    """
+    Gibt Connection und Semaphore-Slot sauber zurück.
+    """
+    try:
+        if conn:
+            db_pool.putconn(conn)
+    finally:
+        db_semaphore.release()
+
 
 # --- LIFESPAN (Ausführen bei Start und Shutdown) ---
 @asynccontextmanager
@@ -165,7 +205,7 @@ def classify_image(req: ImageRequest):
     conn = None
     try:
         # Verbindung aus dem Pool holen (extrem schnell, kein Handshake nötig)
-        conn = db_pool.getconn()
+        conn = acquire_db_conn()
         cursor = conn.cursor()
         
         # In DB speichern
@@ -183,7 +223,7 @@ def classify_image(req: ImageRequest):
             "enqueued_at": time.time()
         }
         r.lpush(REDIS_QUEUE_NAME, json.dumps(task_payload))
-        
+
     except Exception as e:
         if conn:
             conn.rollback()
@@ -191,7 +231,7 @@ def classify_image(req: ImageRequest):
     finally:
         # Verbindung ZWINGEND wieder in den Pool zurückgeben
         if conn:
-            db_pool.putconn(conn)
+            release_db_conn(conn)
 
     return Response(content=json.dumps({"task_id": task_id, "message": "Task queued"}), status_code=202, media_type="application/json")
 
@@ -200,7 +240,7 @@ def get_status(task_id: str):
     """Prüft den Status des Bildes in der Datenbank"""
     conn = None
     try:
-        conn = db_pool.getconn()
+        conn = acquire_db_conn()
         cursor = conn.cursor()
         cursor.execute("SELECT status, result FROM tasks WHERE id = %s", (task_id,))
         row = cursor.fetchone()
@@ -214,4 +254,4 @@ def get_status(task_id: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if conn:
-            db_pool.putconn(conn)
+            release_db_conn(conn)
