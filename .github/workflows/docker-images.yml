@@ -24,11 +24,11 @@ jobs:
       matrix:
         include:
           - service: api
-            context: .
+            context: ./app/api
             dockerfile: app/api/Dockerfile
             image: api
           - service: worker
-            context: .
+            context: ./app/worker
             dockerfile: app/worker/Dockerfile
             image: worker
 
