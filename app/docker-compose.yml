@@ -27,6 +27,8 @@ services:
       POSTGRES_DB: scalability    # Required STRING (scalability). Initial name of PostgreSQL-DB. Format: <string>
     ports:
       - "5432:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
   redis:
     image: redis:7-alpine

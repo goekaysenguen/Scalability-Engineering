@@ -35,11 +35,25 @@ EOF
 start_stateful() {
     echo "Starting stateful components (Postgres & Redis)" >> /var/log/startup-script.log
     
-    # Postgres
+    # init-script for postgres to create table on first start
+    mkdir -p /opt/scalability-engineering/db-init
+    cat > /opt/scalability-engineering/db-init/init.sql <<'EOF'
+CREATE TABLE IF NOT EXISTS tasks (
+    id VARCHAR(50) PRIMARY KEY,
+    status VARCHAR(20),
+    image_url TEXT,
+    result TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMPTZ
+)
+EOF
+
+    # Postgres 
     docker run -d --name postgres -p 5432:5432 \
       -e POSTGRES_DB=scalability \
       -e POSTGRES_USER=postgres \
       -e POSTGRES_PASSWORD=postgres \
+      -v /opt/scalability-engineering/db-init:/docker-entrypoint-initdb.d:ro \
       postgres:15-alpine
 
     # Redis
@@ -88,6 +102,24 @@ EOF
 start_stateless() {
     echo "Starting stateless components (API & Worker)" >> /var/log/startup-script.log
     
+
+    ## vertical scaling based on number of cores
+    CORES=$(nproc)
+
+    # concurrent requests a single core can handle
+    CAPACITY_PER_CORE=25 # TODO: per Lasttest diese Zahl evaluieren
+    MAX_API_CAPACITY=$(( CORES * CAPACITY_PER_CORE ))
+
+    # TODO: 1/3 ist erstmal nur eine schätzung
+    DB_MAX_CONN=$(( MAX_API_CAPACITY / 3 ))
+
+    # use Little's law for Queue-Size
+    NUM_WORKER=$(( CLUSTER_SIZE > 1 ? CLUSTER_SIZE - 1 : 1 ))
+    THROUGHPUT=$(( CORES * 2 )) # TODO: erstmal eine Annahme, dass ein core 2 Bilder pro Sekunde schafft
+    MAX_QUEUE_AGE=15
+    MAX_GLOBAL_QUEUE_SIZE=$(( THROUGHPUT * MAX_QUEUE_AGE * NUM_WORKER))
+
+
     # TODO: einige ENV-variablen in variables.tf schreiben damit wir nicht zweimal angeben müssen?
     # API
     docker pull ghcr.io/goekaysenguen/scalability-engineering/api:latest
@@ -100,9 +132,9 @@ start_stateless() {
       -e REDIS_HOST="$STATEFUL_IP" \
       -e REDIS_PORT="6379" \
       -e REDIS_QUEUE_NAME="image_tasks" \
-      -e MAX_API_CAPACITY="50" \
-      -e DB_MAX_CONN="20" \
-      -e MAX_GLOBAL_QUEUE_SIZE="30" \
+      -e MAX_API_CAPACITY="$MAX_API_CAPACITY" \
+      -e DB_MAX_CONN="$DB_MAX_CONN" \
+      -e MAX_GLOBAL_QUEUE_SIZE="$MAX_GLOBAL_QUEUE_SIZE" \
       ghcr.io/goekaysenguen/scalability-engineering/api:latest
 
     # Worker
@@ -116,7 +148,7 @@ start_stateless() {
       -e REDIS_HOST="$STATEFUL_IP" \
       -e REDIS_PORT="6379" \
       -e REDIS_QUEUE_NAME="image_tasks" \
-      -e MAX_QUEUE_AGE_SECONDS="15" \
+      -e MAX_QUEUE_AGE_SECONDS="$MAX_QUEUE_AGE" \
       ghcr.io/goekaysenguen/scalability-engineering/worker:latest
 
 }

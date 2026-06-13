@@ -48,42 +48,14 @@ def setup_db_and_pool():
     
     # Between 0 and 3 sec
     startup_jitter = random.uniform(0.0, 3.0)
-    print(f"[{hostname}] Jittered Startup: Warte {startup_jitter:.2f}s zur Vermeidung von Race Conditions.")
+    print(f"[{hostname}] Jittered Startup: Warte {startup_jitter:.2f}s um DB nicht zu überlasten.")
     time.sleep(startup_jitter)
 
     max_retries = 10
     for attempt in range(max_retries):
         try:
-            # 1. Normale Verbindung testen & Tabellen erstellen
-            conn = psycopg2.connect(
-                host=DB_HOST, database="scalability", user="postgres", password="postgres", connect_timeout=3
-            )
-            
-            # Autocommit einschalten, damit wir DDL-Fehler sauber catchen können,
-            # ohne die laufende Transaktion zu blockieren.
-            conn.autocommit = True 
-            
-            with conn.cursor() as cursor:
-                try:
-                    cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS tasks (
-                            id VARCHAR(50) PRIMARY KEY,
-                            status VARCHAR(20),
-                            image_url TEXT,
-                            result TEXT,
-                            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                            finished_at TIMESTAMPTZ
-                        )
-                    """)
-                except UniqueViolation:
-                    # Falls trotz Jitter eine Kollision auftritt (weil Postgres IF NOT EXISTS intern so verarbeitet),
-                    # ignorieren wir diesen spezifischen Fehler einfach, da es bedeutet, dass die Tabelle existiert.
-                    print(f"[{hostname}] Tabelle wurde zeitgleich von einer anderen Node erstellt. Ignoriere Fehler.")
-            
-            conn.autocommit = False
-            conn.close()
-
-            # 2. Connection Pool erstellen
+            # Versuche einfach direkt den Pool zu erstellen.
+            # Schlägt das fehl (weil Postgres noch hochfährt), landen wir im except-Block.
             db_pool = pool.ThreadedConnectionPool(
                 minconn=1,
                 maxconn=DB_MAX_CONN,
@@ -92,7 +64,7 @@ def setup_db_and_pool():
                 user=os.getenv("DB_USER", None),
                 password=os.getenv("DB_PASSWORD", None)
             )
-            print(f"[{hostname}] Datenbank-Setup und Connection Pool erfolgreich initialisiert!")
+            print("Datenbank-Pool erfolgreich initialisiert.")
             return
         except Exception as e:
             print(f"Datenbank noch nicht bereit (Versuch {attempt + 1}/{max_retries}): {e}")
