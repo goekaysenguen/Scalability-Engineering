@@ -35,11 +35,24 @@ EOF
 start_stateful() {
     echo "Starting stateful components (Postgres & Redis)" >> /var/log/startup-script.log
     
-    # Postgres
+    # init-script for postgres to create table on first start
+    mkdir -p /opt/scalability-engineering/db-init
+    cat > /opt/scalability-engineering/db-init/init.sql <<'EOF'
+CREATE TABLE IF NOT EXISTS tasks (
+    id VARCHAR(50) PRIMARY KEY,
+    status VARCHAR(20),
+    image_url TEXT,
+    result TEXT,
+    enqueued_at FLOAT
+);
+EOF
+
+    # Postgres 
     docker run -d --name postgres -p 5432:5432 \
       -e POSTGRES_DB=scalability \
       -e POSTGRES_USER=postgres \
       -e POSTGRES_PASSWORD=postgres \
+      -v /opt/scalability-engineering/db-init:/docker-entrypoint-initdb.d:ro \
       postgres:15-alpine
 
     # Redis
