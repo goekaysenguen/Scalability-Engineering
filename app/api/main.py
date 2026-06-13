@@ -71,7 +71,8 @@ def setup_db_and_pool():
                             status VARCHAR(20),
                             image_url TEXT,
                             result TEXT,
-                            enqueued_at FLOAT
+                            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                            finished_at TIMESTAMPTZ
                         )
                     """)
                 except UniqueViolation:
@@ -209,7 +210,7 @@ def classify_image(req: ImageRequest):
         # In DB speichern
         with conn.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO tasks (id, status, image_url) VALUES (%s, 'pending', %s)",
+                "INSERT INTO tasks (id, status, image_url, created_at) VALUES (%s, 'pending', %s, NOW())",
                 (task_id, req.image_url)
             )
         conn.commit()
@@ -245,13 +246,13 @@ def get_status(task_id: str):
         conn = acquire_db_conn()
         
         with conn.cursor() as cursor:
-            cursor.execute("SELECT status, result FROM tasks WHERE id = %s", (task_id,))
+            cursor.execute("SELECT status, result, created_at, finished_at FROM tasks WHERE id = %s", (task_id,))
             row = cursor.fetchone()
 
         if not row:
             raise HTTPException(status_code=404, detail="Task not found")
         
-        return {"task_id": task_id, "status": row[0], "result": row[1]}
+        return {"task_id": task_id, "status": row[0], "result": row[1], "created_at": row[2].isoformat() if row[2] else None, "finished_at": row[3].isoformat() if row[3] else None}
     except HTTPException:
         if conn:
             conn.rollback()

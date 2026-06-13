@@ -77,7 +77,7 @@ def process_task(task, conn):
         time_in_queue = time.time() - enqueued_at
         if time_in_queue > MAX_QUEUE_AGE_SECONDS:
             print(f"Task {task_id} ist zu alt ({time_in_queue:.1f}s > {MAX_QUEUE_AGE_SECONDS}s). Verwerfe Task (Wasted Work Prevention)!")
-            cursor.execute("UPDATE tasks SET status = 'failed', result = 'timeout in queue' WHERE id = %s", (task_id,))
+            cursor.execute("UPDATE tasks SET status = 'failed', result = 'timeout in queue', finished_at = NOW() WHERE id = %s", (task_id,))
             conn.commit()
             return
 
@@ -110,7 +110,7 @@ def process_task(task, conn):
 
         # 4. ERGEBNIS SPEICHERN
         cursor.execute(
-            "UPDATE tasks SET status = 'completed', result = %s WHERE id = %s",
+            "UPDATE tasks SET status = 'completed', result = %s, finished_at = NOW() WHERE id = %s",
             (result_string, task_id)
         )
         conn.commit()
@@ -126,7 +126,7 @@ def process_task(task, conn):
         
         # Bei Fehler Status auf 'failed' setzen, damit die API weiß, was los ist
         try:
-            cursor.execute("UPDATE tasks SET status = 'failed', result = %s WHERE id = %s", (str(e), task_id))
+            cursor.execute("UPDATE tasks SET status = 'failed', result = %s, finished_at = NOW() WHERE id = %s", (str(e), task_id))
             conn.commit()
         except Exception as inner_e:
             print(f"Konnte Fehler nicht in DB speichern: {inner_e}")
