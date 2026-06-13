@@ -90,7 +90,7 @@ start_stateless() {
     
     # TODO: einige ENV-variablen in variables.tf schreiben damit wir nicht zweimal angeben müssen?
     # API
-    docker pull ghcr.io/lpusch/api:latest
+    docker pull ghcr.io/goekaysenguen/scalability-engineering/api:latest
     docker run -d --name api -p "$API_PORT":8000 \
       --restart always \
       -e DB_HOST="$STATEFUL_IP" \
@@ -103,10 +103,10 @@ start_stateless() {
       -e MAX_API_CAPACITY="50" \
       -e DB_MAX_CONN="20" \
       -e MAX_GLOBAL_QUEUE_SIZE="30" \
-      ghcr.io/lpusch/api:latest
+      ghcr.io/goekaysenguen/scalability-engineering/api:latest
 
     # Worker
-    docker pull ghcr.io/lpusch/worker:latest
+    docker pull ghcr.io/goekaysenguen/scalability-engineering/worker:latest
     docker run -d --name worker \
       --restart always \
       -e DB_HOST="$STATEFUL_IP" \
@@ -117,7 +117,7 @@ start_stateless() {
       -e REDIS_PORT="6379" \
       -e REDIS_QUEUE_NAME="image_tasks" \
       -e MAX_QUEUE_AGE_SECONDS="15" \
-      ghcr.io/lpusch/worker:latest
+      ghcr.io/goekaysenguen/scalability-engineering/worker:latest
 
 }
 
