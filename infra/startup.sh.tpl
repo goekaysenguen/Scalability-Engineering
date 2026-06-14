@@ -116,7 +116,7 @@ start_stateless() {
     # use Little's law for Queue-Size
     NUM_WORKER=$(( CLUSTER_SIZE > 1 ? CLUSTER_SIZE - 1 : 1 ))
     THROUGHPUT=$(( CORES * 3 )) # TODO: erstmal eine Annahme, dass ein core 3 Bilder pro Sekunde schafft
-    MAX_QUEUE_AGE=15
+    MAX_QUEUE_AGE=60
     MAX_GLOBAL_QUEUE_SIZE=$(( THROUGHPUT * MAX_QUEUE_AGE * NUM_WORKER))
 
 
