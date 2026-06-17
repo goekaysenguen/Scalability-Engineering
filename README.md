@@ -21,7 +21,7 @@ For local testing, the entire stack (Load Balancer, API, Worker, Database, Queue
    # Submit an image
    curl -X POST http://localhost:8000/classify \
         -H "Content-Type: application/json" \
-        -d '{"image_url": "https://upload.wikimedia.org/wikipedia/commons/c/c0/Golden_Retriever_with_tennis_ball.jpg"}'
+        -d '{"image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS2FUZMIkoOnHgembMF9InnnlEXenXekksJrA&s"}'
    
    # Check the status (replace with your task_id)
    curl http://localhost:8000/status/<TASK_ID>
@@ -69,7 +69,7 @@ The infrastructure is deployed to Google Cloud Platform (GCP) using Terraform. T
    # Submit an image
    curl -X POST http://<externalIP>/classify \
         -H "Content-Type: application/json" \
-        -d '{"image_url": "https://upload.wikimedia.org/wikipedia/commons/c/c0/Golden_Retriever_with_tennis_ball.jpg"}'
+        -d '{"image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS2FUZMIkoOnHgembMF9InnnlEXenXekksJrA&s"}'
    
    # Check the status (replace with your task_id)
    curl http://<externalIP>/status/<TASK_ID>
