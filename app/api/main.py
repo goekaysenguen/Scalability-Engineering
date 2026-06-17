@@ -4,7 +4,6 @@ import uuid
 import time
 import socket 
 import random 
-import psycopg2
 from psycopg2 import pool
 from psycopg2.errors import UniqueViolation
 import redis
@@ -13,6 +12,7 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from collections import defaultdict
 import threading
+import hashlib
 
 # --- KONFIGURATION ---
 REDIS_HOST = os.getenv("REDIS_HOST", None)
@@ -20,7 +20,8 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_QUEUE_NAME = os.getenv("REDIS_QUEUE_NAME", "image_tasks")
 MAX_QUEUE_SIZE = int(os.getenv("MAX_GLOBAL_QUEUE_SIZE", 45))
 
-DB_HOST = os.getenv("DB_HOST", None)
+DB_HOSTS = os.getenv("DB_HOSTS", None).split(",")
+NUMBER_OF_DBS = len(DB_HOSTS)
 DB_MAX_CONN = int(os.getenv("DB_MAX_CONN", 20))
 
 # For fairness & load shedding
@@ -34,13 +35,25 @@ GLOBAL_THROTTLE_THRESHOLD = GLOBAL_MAX_REQUESTS * 0.8  # Ab 80% Requests im Syst
 active_requests = 0
 client_requests = defaultdict(int)
 
-db_pool = None
-db_semaphore = threading.BoundedSemaphore(DB_MAX_CONN)
+db_pools = []
+db_semaphores = [threading.BoundedSemaphore(DB_MAX_CONN) for _ in range(NUMBER_OF_DBS)]
 r = None
 
 
+def get_db_index(task_id) -> int:
+    if isinstance(task_id, str):
+        task_id = uuid.UUID(task_id)
+    digest = hashlib.sha256(task_id.bytes).digest()
+    return int.from_bytes(digest, "big") % NUMBER_OF_DBS
+
+def get_db_pool_and_semaphore(task_id):
+    db_index = get_db_index(task_id)
+    db_pool = db_pools[db_index]
+    db_semaphore = db_semaphores[db_index]
+    return db_pool, db_semaphore
+
 def setup_db_and_pool():
-    global db_pool
+    global db_pools
     
     # Deterministic Jitter (Ref: Minimizing correlated failures)
     hostname = socket.gethostname()
@@ -52,31 +65,33 @@ def setup_db_and_pool():
     time.sleep(startup_jitter)
 
     max_retries = 10
-    for attempt in range(max_retries):
-        try:
-            # Versuche einfach direkt den Pool zu erstellen.
-            # Schlägt das fehl (weil Postgres noch hochfährt), landen wir im except-Block.
-            db_pool = pool.ThreadedConnectionPool(
-                minconn=1,
-                maxconn=DB_MAX_CONN,
-                host=os.getenv("DB_HOST", None),
-                database=os.getenv("DB_NAME", None),
-                user=os.getenv("DB_USER", None),
-                password=os.getenv("DB_PASSWORD", None)
-            )
-            print("Datenbank-Pool erfolgreich initialisiert.")
-            return
-        except Exception as e:
-            print(f"Datenbank noch nicht bereit (Versuch {attempt + 1}/{max_retries}): {e}")
-            time.sleep(2 + random.uniform(0.0, 1.0))
-            
-    print("FATAL: Konnte nach mehreren Versuchen keine Verbindung zur Datenbank herstellen.")
+    for db_host in DB_HOSTS:
+        for attempt in range(max_retries):
+            try:
+                # Versuche einfach direkt den Pool zu erstellen.
+                # Schlägt das fehl (weil Postgres noch hochfährt), landen wir im except-Block.
+                db_pool = pool.ThreadedConnectionPool(
+                    minconn=1,
+                    maxconn=DB_MAX_CONN,
+                    host=db_host,
+                    database=os.getenv("DB_NAME", None),
+                    user=os.getenv("DB_USER", None),
+                    password=os.getenv("DB_PASSWORD", None)
+                )
+                db_pools.append(db_pool)
+                break
+            except Exception as e:
+                print(f"Datenbank noch nicht bereit (Versuch {attempt + 1}/{max_retries}): {e}")
+                time.sleep(2 + random.uniform(0.0, 1.0))
+        else:
+            raise RuntimeError(f"Konnte keine Verbindung zu {db_host} herstellen.")
 
-def acquire_db_conn():
+def acquire_db_conn(task_id):
     """
     Wartet kontrolliert auf eine freie DB-Verbindung.
     Gibt 503 zurück, wenn innerhalb des Timeouts keine Verbindung verfügbar ist.
     """
+    db_pool, db_semaphore = get_db_pool_and_semaphore(task_id)
     acquired = db_semaphore.acquire(timeout=2)
 
     if not acquired:
@@ -98,10 +113,11 @@ def acquire_db_conn():
         db_semaphore.release()
         raise
 
-def release_db_conn(conn):
+def release_db_conn(task_id, conn):
     """
     Gibt Connection und Semaphore-Slot sauber zurück.
     """
+    db_pool, db_semaphore = get_db_pool_and_semaphore(task_id)
     try:
         if conn:
             db_pool.putconn(conn)
@@ -112,13 +128,14 @@ def release_db_conn(conn):
 # --- LIFESPAN (Ausführen bei Start und Shutdown) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global r, db_pool
+    global r
     setup_db_and_pool()
     r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
     yield
     # Beim Beenden der API sauber aufräumen
-    if db_pool:
-        db_pool.closeall()
+    for db_pool in db_pools:
+        if db_pool:
+            db_pool.closeall()
     if r:
         r.close()
 
@@ -177,7 +194,7 @@ def classify_image(req: ImageRequest):
     conn = None
     try:
         # Verbindung aus dem Pool holen (extrem schnell, kein Handshake nötig)
-        conn = acquire_db_conn()
+        conn = acquire_db_conn(task_id)
         
         # In DB speichern
         with conn.cursor() as cursor:
@@ -206,7 +223,7 @@ def classify_image(req: ImageRequest):
     finally:
         # Verbindung ZWINGEND wieder in den Pool zurückgeben
         if conn:
-            release_db_conn(conn)
+            release_db_conn(task_id, conn)
 
     return Response(content=json.dumps({"task_id": task_id, "message": "Task queued"}), status_code=202, media_type="application/json")
 
@@ -215,7 +232,7 @@ def get_status(task_id: str):
     """Prüft den Status des Bildes in der Datenbank"""
     conn = None
     try:
-        conn = acquire_db_conn()
+        conn = acquire_db_conn(task_id)
         
         with conn.cursor() as cursor:
             cursor.execute("SELECT status, result, created_at, finished_at FROM tasks WHERE id = %s", (task_id,))
@@ -235,4 +252,4 @@ def get_status(task_id: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if conn:
-            release_db_conn(conn)
+            release_db_conn(task_id, conn)

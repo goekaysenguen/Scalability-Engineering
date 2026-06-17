@@ -12,6 +12,14 @@ locals {
       url = "http://${ip}:${var.api_port}"
     }
   ])
+
+  redis_ip = local.node_ips[0]
+
+  db_ips = var.cluster_size == 1 ? [
+    local.node_ips[0]
+  ] : slice(local.node_ips, 0, 2)
+
+  db_hosts = join(",", local.db_ips)
 }
 
 
@@ -88,6 +96,7 @@ resource "google_compute_instance" "vm" {
     loadbalancer_port = var.loadbalancer_port
     api_port     = var.api_port
     api_servers_json = local.api_servers_json
-    stateful_ip       = local.node_ips[0] # IP of Node 0
+    db_hosts = local.db_hosts
+    redis_ip = local.redis_ip
   })
 }

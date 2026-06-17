@@ -7,6 +7,8 @@ import requests
 from io import BytesIO
 from PIL import Image
 import numpy as np
+import hashlib
+import uuid
 
 # TensorFlow & MobileNetV3
 from tensorflow.keras.applications import MobileNetV3Small
@@ -18,7 +20,8 @@ REDIS_HOST = os.getenv("REDIS_HOST", None)
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_QUEUE_NAME = os.getenv("REDIS_QUEUE_NAME", "image_tasks")
 
-DB_HOST = os.getenv("DB_HOST", None)
+DB_HOSTS = os.getenv("DB_HOSTS", None).split(",")
+NUMBER_OF_DBS = len(DB_HOSTS)
 DB_NAME = os.getenv("DB_NAME", None)
 DB_USER = os.getenv("DB_USER", None)
 DB_PASS = os.getenv("DB_PASSWORD", None)
@@ -32,12 +35,22 @@ print("Lade MobileNetV3 Modell in den Speicher... Das passiert nur einmal!")
 model = MobileNetV3Small(weights='imagenet')
 print("Modell erfolgreich geladen.")
 
-def get_db_connection():
+def get_db_index(task_id) -> int:
+    if isinstance(task_id, str):
+        task_id = uuid.UUID(task_id)
+    digest = hashlib.sha256(task_id.bytes).digest()
+    return int.from_bytes(digest, "big") % NUMBER_OF_DBS
+
+def get_db_connections():
     """Baut eine Verbindung zur Datenbank auf."""
-    return psycopg2.connect(
-        host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS,
-        connect_timeout=5
-    )
+    connections = []
+    for db_host in DB_HOSTS:
+        conn = psycopg2.connect(
+            host=db_host, database=DB_NAME, user=DB_USER, password=DB_PASS,
+            connect_timeout=5
+        )
+        connections.append(conn)
+    return connections
 
 def download_image(url):
     """Lädt das Bild herunter. In Produktion wäre das z.B. Google Cloud Storage."""
@@ -64,11 +77,15 @@ def predict_image(img):
     best_match = results[0][1] 
     return best_match
 
-def process_task(task, conn):
+def process_task(task, conns):
     task_id = task.get("task_id")
     image_url = task.get("image_url")
     enqueued_at = task.get("enqueued_at", 0)
 
+    db_index = get_db_index(task_id)
+    conn = conns[db_index]
+
+    cursor = None
     try:
         cursor = conn.cursor()
 
@@ -88,11 +105,13 @@ def process_task(task, conn):
         row = cursor.fetchone()
         if not row:
             print(f"Task {task_id} nicht in DB gefunden. Überspringe.")
+            conn.rollback()
             return
         
         status = row[0]
         if status in ['completed', 'failed']:
             print(f"Idempotency greift: Task {task_id} ist bereits {status}. Überspringe.")
+            conn.rollback()
             return
 
         # Status auf 'processing' setzen
@@ -126,13 +145,15 @@ def process_task(task, conn):
         
         # Bei Fehler Status auf 'failed' setzen, damit die API weiß, was los ist
         try:
+            if cursor is None:
+                cursor = conn.cursor()
             cursor.execute("UPDATE tasks SET status = 'failed', result = %s, finished_at = NOW() WHERE id = %s", (str(e), task_id))
             conn.commit()
         except Exception as inner_e:
             print(f"Konnte Fehler nicht in DB speichern: {inner_e}")
             conn.rollback()
     finally:
-        if 'cursor' in locals() and cursor is not None:
+        if cursor is not None:
             cursor.close()
 
 def main():
@@ -142,10 +163,10 @@ def main():
     print("AI Worker ist gestartet und wartet auf Aufgaben...")
     
     # Initiale Datenbankverbindung aufbauen (Persistent Connection)
-    db_conn = None
-    while db_conn is None:
+    db_conns = None
+    while db_conns is None:
         try:
-            db_conn = get_db_connection()
+            db_conns = get_db_connections()
             print("Erfolgreich zur Datenbank verbunden!")
         except Exception as e:
             print(f"Warte auf Datenbank... {e}")
@@ -162,7 +183,7 @@ def main():
                 task = json.loads(data)
                 
                 # Wir übergeben die offene Verbindung an die Funktion
-                process_task(task, db_conn)
+                process_task(task, db_conns)
                 
         except redis.ConnectionError:
             print("Verbindung zu Redis verloren. Versuche es in 5 Sekunden erneut...")
@@ -171,15 +192,16 @@ def main():
             # Wenn die DB-Verbindung abreißt (z.B. Postgres-Container neu gestartet)
             print("Datenbankverbindung verloren! Versuche Reconnect...")
             try:
-                db_conn.close()
+                for conn in db_conns:
+                    conn.close()
             except:
                 pass
             
             # Reconnect-Schleife
-            db_conn = None
-            while db_conn is None:
+            db_conns = None
+            while db_conns is None:
                 try:
-                    db_conn = get_db_connection()
+                    db_conns = get_db_connections()
                     print("Reconnect zur Datenbank erfolgreich!")
                 except Exception:
                     time.sleep(2)

@@ -1,6 +1,6 @@
 # YAML Anchors
 x-common-env: &common-env
-  DB_HOST: postgres             # Required STRING (none). Hostname of PostgreSQL-DB. Format: <string>
+  DB_HOSTS: postgres,postgres2             # Required STRING (none). Hostname of PostgreSQL-DB. Format: <string>
   DB_USER: postgres             # Required STRING (postgres). Username for target database. Format: <string>
   DB_PASSWORD: postgres         # Required STRING (postgres). Password for target database. Format: <string>
   DB_NAME: scalability          # Required STRING (scalability). Name of the target database. Format: <string>
@@ -25,8 +25,19 @@ services:
       POSTGRES_USER: postgres     # Required STRING (postgres). Initial superuser-name for the DB. Format: <string>
       POSTGRES_PASSWORD: postgres # Required STRING (postgres). Initial password for superuser. Format: <string>
       POSTGRES_DB: scalability    # Required STRING (scalability). Initial name of PostgreSQL-DB. Format: <string>
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  postgres2:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres     # Required STRING (postgres). Initial superuser-name for the DB. Format: <string>
+      POSTGRES_PASSWORD: postgres # Required STRING (postgres). Initial password for superuser. Format: <string>
+      POSTGRES_DB: scalability    # Required STRING (scalability). Initial name of PostgreSQL-DB. Format: <string>
+    expose:
+      - "5432"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
@@ -43,6 +54,7 @@ services:
     depends_on:
       - redis
       - postgres
+      - postgres2
 
   api-2:
     build: 
@@ -52,6 +64,7 @@ services:
     depends_on:
       - redis
       - postgres
+      - postgres2
 
   worker:
     build: 
@@ -62,6 +75,7 @@ services:
     depends_on:
       - redis
       - postgres
+      - postgres2
 
   loadbalancer:
     image: nginx:1.31.1

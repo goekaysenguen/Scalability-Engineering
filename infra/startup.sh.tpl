@@ -5,7 +5,8 @@ CLUSTER_SIZE='${cluster_size}'
 LOADBALANCER_PORT='${loadbalancer_port}'
 API_PORT='${api_port}'
 API_SERVERS_JSON='${api_servers_json}'
-STATEFUL_IP='${stateful_ip}'
+DB_HOSTS='${db_hosts}'
+REDIS_IP='${redis_ip}'
 
 install_docker() {
     echo "Installing docker" >> /var/log/startup-script.log
@@ -32,9 +33,8 @@ EOF
     echo "Finsihed Installing docker" >> /var/log/startup-script.log
 }
 
-start_stateful() {
-    echo "Starting stateful components (Postgres & Redis)" >> /var/log/startup-script.log
-    
+start_postgres() {
+    echo "Starting postgres" >> /var/log/startup-script.log
     # init-script for postgres to create table on first start
     mkdir -p /opt/scalability-engineering/db-init
     cat > /opt/scalability-engineering/db-init/init.sql <<'EOF'
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     result TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     finished_at TIMESTAMPTZ
-)
+);
 EOF
 
     # Postgres 
@@ -55,6 +55,10 @@ EOF
       -e POSTGRES_PASSWORD=postgres \
       -v /opt/scalability-engineering/db-init:/docker-entrypoint-initdb.d:ro \
       postgres:15-alpine
+}
+
+start_loadbalancer_and_redis() {
+    echo "Starting stateful components (Loadbalancer & Redis)" >> /var/log/startup-script.log
 
     # Redis
     docker run -d --name redis -p 6379:6379 redis:7-alpine
@@ -125,11 +129,11 @@ start_stateless() {
     docker pull ghcr.io/goekaysenguen/scalability-engineering/api:latest
     docker run -d --name api -p "$API_PORT":8000 \
       --restart always \
-      -e DB_HOST="$STATEFUL_IP" \
+      -e DB_HOSTS="$DB_HOSTS" \
       -e DB_USER="postgres" \
       -e DB_PASSWORD="postgres" \
       -e DB_NAME="scalability" \
-      -e REDIS_HOST="$STATEFUL_IP" \
+      -e REDIS_HOST="$REDIS_IP" \
       -e REDIS_PORT="6379" \
       -e REDIS_QUEUE_NAME="image_tasks" \
       -e MAX_API_CAPACITY="$MAX_API_CAPACITY" \
@@ -141,11 +145,11 @@ start_stateless() {
     docker pull ghcr.io/goekaysenguen/scalability-engineering/worker:latest
     docker run -d --name worker \
       --restart always \
-      -e DB_HOST="$STATEFUL_IP" \
+      -e DB_HOSTS="$DB_HOSTS" \
       -e DB_USER="postgres" \
       -e DB_PASSWORD="postgres" \
       -e DB_NAME="scalability" \
-      -e REDIS_HOST="$STATEFUL_IP" \
+      -e REDIS_HOST="$REDIS_IP" \
       -e REDIS_PORT="6379" \
       -e REDIS_QUEUE_NAME="image_tasks" \
       -e MAX_QUEUE_AGE_SECONDS="$MAX_QUEUE_AGE" \
@@ -157,11 +161,17 @@ install_docker
 
 if [ "$CLUSTER_SIZE" = "1" ]; then
     echo "Starting single-node deployment"
+    start_postgres
+    start_loadbalancer_and_redis
     start_stateless
-    start_stateful
 elif [ "$NODE_INDEX" = "0" ]; then
     echo "Starting stateful component" >> /var/log/startup-script.log
-    start_stateful
+    start_postgres
+    start_loadbalancer_and_redis
+elif [ "$NODE_INDEX" = "1" ]; then
+    echo "Starting secondary DB node with API and Worker" >> /var/log/startup-script.log
+    start_postgres
+    start_stateless
 else
     echo "Starting stateless component"
     start_stateless

@@ -5,4 +5,4 @@ CREATE TABLE IF NOT EXISTS tasks (
     result TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     finished_at TIMESTAMPTZ
-)
+);
