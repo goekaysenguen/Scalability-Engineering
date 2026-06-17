@@ -81,6 +81,14 @@ To avoid unnecessary GCP costs, destroy the infrastructure after testing:
 terraform destroy
 ```
 
+### Run K6 load-test
+
+```sh
+docker run --rm -i -v $(pwd):/app -w /app grafana/k6 run k6_load_test.js
+```
+
+
+
 # 2. weitere TODOs (Fokus auf das Assignment!)
 
 #### Prio 1: Der Load-Test (K6) & Metriken (Zwingend für Req 2!)
