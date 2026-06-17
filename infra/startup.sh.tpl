@@ -30,7 +30,7 @@ EOF
     sudo apt update
 
     sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    echo "Finsihed Installing docker" >> /var/log/startup-script.log
+    echo "Finished Installing docker" >> /var/log/startup-script.log
 }
 
 start_postgres() {
@@ -50,6 +50,7 @@ EOF
 
     # Postgres 
     docker run -d --name postgres -p 5432:5432 \
+      --restart always \
       -e POSTGRES_DB=scalability \
       -e POSTGRES_USER=postgres \
       -e POSTGRES_PASSWORD=postgres \
@@ -61,7 +62,7 @@ start_loadbalancer_and_redis() {
     echo "Starting stateful components (Loadbalancer & Redis)" >> /var/log/startup-script.log
 
     # Redis
-    docker run -d --name redis -p 6379:6379 redis:7-alpine
+    docker run -d --name redis -p 6379:6379 --restart always redis:7-alpine
 
     # Nginx
     sudo apt install -y jq
@@ -100,7 +101,10 @@ EOF
 EOF
 
     docker pull nginx:1.31.1
-    docker run -d -p "$LOADBALANCER_PORT":8000 -v /opt/scalability-engineering/nginx.conf:/etc/nginx/nginx.conf:ro nginx:1.31.1
+    docker run -d --name loadbalancer -p "$LOADBALANCER_PORT":8000 \
+      --restart always \
+      -v /opt/scalability-engineering/nginx.conf:/etc/nginx/nginx.conf:ro \
+      nginx:1.31.1
 }
 
 start_stateless() {
