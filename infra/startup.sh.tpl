@@ -159,20 +159,17 @@ start_stateless() {
 
 install_docker
 
+echo "Node $NODE_INDEX: Starting Postgres on EVERY node"
+start_postgres
+
 if [ "$CLUSTER_SIZE" = "1" ]; then
     echo "Starting single-node deployment"
-    start_postgres
     start_loadbalancer_and_redis
     start_stateless
 elif [ "$NODE_INDEX" = "0" ]; then
-    echo "Starting stateful component" >> /var/log/startup-script.log
-    start_postgres
+    echo "Node 0 (Multi-Node): Starting Loadbalancer & Redis ONLY (No API/Worker)"
     start_loadbalancer_and_redis
-elif [ "$NODE_INDEX" = "1" ]; then
-    echo "Starting secondary DB node with API and Worker" >> /var/log/startup-script.log
-    start_postgres
-    start_stateless
 else
-    echo "Starting stateless component"
+    echo "Node $NODE_INDEX (Multi-Node): Starting Stateless (API & Worker)"
     start_stateless
 fi
