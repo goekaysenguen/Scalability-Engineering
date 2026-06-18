@@ -12,7 +12,7 @@ install_docker() {
     echo "Installing docker" >> /var/log/startup-script.log
     # Add Docker's official GPG key:
     sudo apt update
-    sudo apt install -y ca-certificates curl
+    sudo apt install -y ca-certificates curl htop
     sudo install -m 0755 -d /etc/apt/keyrings
     sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
     sudo chmod a+r /etc/apt/keyrings/docker.asc
@@ -123,8 +123,8 @@ start_stateless() {
 
     # use Little's law for Queue-Size
     NUM_WORKER=$(( CLUSTER_SIZE > 1 ? CLUSTER_SIZE - 1 : 1 ))
-    THROUGHPUT=$(( CORES * 3 )) # TODO: erstmal eine Annahme, dass ein core 3 Bilder pro Sekunde schafft
-    MAX_QUEUE_AGE=60
+    THROUGHPUT=$(( CORES * 7 )) # TODO: erstmal eine Annahme, dass ein core 3 Bilder pro Sekunde schafft
+    MAX_QUEUE_AGE=30
     MAX_GLOBAL_QUEUE_SIZE=$(( THROUGHPUT * MAX_QUEUE_AGE * NUM_WORKER))
 
 
