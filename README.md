@@ -84,7 +84,10 @@ terraform destroy
 ### Run K6 load-test
 
 ```sh
-docker run --rm -i -v $(pwd):/app -w /app grafana/k6 run k6_load_test.js
+docker run --rm -i \
+  -e BASE_URL=http://<external-node1-IP> \
+  -v $(pwd):/app -w /app \
+  grafana/k6 run k6_load_test.js
 ```
 
 

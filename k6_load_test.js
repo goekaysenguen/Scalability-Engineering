@@ -16,14 +16,17 @@ export const classifyLatency = new Trend('classify_latency');
 export const options = {
   scenarios: {
     create_image_tasks: {
-      executor: 'ramping-vus',
+      executor: 'ramping-arrival-rate',
+      startRate: 2,
+      timeUnit: '1s',
+      preAllocatedVUs: 50,
+      maxVUs: 200,
       stages: [
-        { duration: '30s', target: 10 },
-        { duration: '1m', target: 25 },
-        { duration: '1m', target: 50 },
-        { duration: '30s', target: 0 },
+        { duration: '30s', target: 10 }, // Gehe schnell auf 10 Req/s (1 Node ist hier schon leicht überlastet)
+        { duration: '1m', target: 40 },  // Vollgas auf 40 Req/s (Das überlastet selbst 3 Nodes massiv!)
+        { duration: '1m', target: 40 },  // Halte die Überlast für 1 Minute
+        { duration: '30s', target: 0 },  // Cooldown
       ],
-      gracefulRampDown: '10s',
     },
   },
   thresholds: {
@@ -87,5 +90,5 @@ export default function () {
     console.error(`Unexpected response: status=${res.status}, body=${res.body}`);
   }
 
-  sleep(THINK_TIME_SECONDS);
+  //sleep(THINK_TIME_SECONDS);
 }
