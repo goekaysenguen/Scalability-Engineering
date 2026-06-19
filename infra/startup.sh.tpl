@@ -117,12 +117,15 @@ start_stateless() {
     # leave one core for DB/API/Nginx if possible to prevent
     AI_WORKERS=$(( CORES > 1 ? CORES - 1 : 1 ))
 
-    # TODO: 1/3 ist erstmal nur eine schätzung
-    DB_MAX_CONN=$(( MAX_API_CAPACITY / 3 ))
+    # concurrent requests a single node can handle
+    MAX_API_CAPACITY=100
+
+    # DB connections used by the API
+    DB_MAX_CONN=20
 
     # use Little's law for Queue-Size
     NUM_WORKER=$(( CLUSTER_SIZE > 1 ? CLUSTER_SIZE - 1 : 1 ))
-    THROUGHPUT=$(( CORES * 7 )) # TODO: erstmal eine Annahme, dass ein core 3 Bilder pro Sekunde schafft
+    THROUGHPUT=$(( CORES * 5 )) # 5 Images per Core and second (result from loadtests)
     MAX_QUEUE_AGE=30
     MAX_GLOBAL_QUEUE_SIZE=$(( THROUGHPUT * MAX_QUEUE_AGE * NUM_WORKER))
 
@@ -149,16 +152,16 @@ start_stateless() {
     for i in $(seq 1 $AI_WORKERS); do
         echo "Starting Worker $i..."
         docker run -d --name worker-$i \
-      --restart always \
-      -e DB_HOSTS="$DB_HOSTS" \
-      -e DB_USER="postgres" \
-      -e DB_PASSWORD="postgres" \
-      -e DB_NAME="scalability" \
-      -e REDIS_HOST="$REDIS_IP" \
-      -e REDIS_PORT="6379" \
-      -e REDIS_QUEUE_NAME="image_tasks" \
-      -e MAX_QUEUE_AGE_SECONDS="$MAX_QUEUE_AGE" \
-      ghcr.io/goekaysenguen/scalability-engineering/worker:latest
+          --restart always \
+          -e DB_HOSTS="$DB_HOSTS" \
+          -e DB_USER="postgres" \
+          -e DB_PASSWORD="postgres" \
+          -e DB_NAME="scalability" \
+          -e REDIS_HOST="$REDIS_IP" \
+          -e REDIS_PORT="6379" \
+          -e REDIS_QUEUE_NAME="image_tasks" \
+          -e MAX_QUEUE_AGE_SECONDS="$MAX_QUEUE_AGE" \
+          ghcr.io/goekaysenguen/scalability-engineering/worker:latest
     done
 }
 
