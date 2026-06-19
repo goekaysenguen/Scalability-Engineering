@@ -104,11 +104,19 @@ def plot_metrics(df):
     ax2.grid(True, linestyle='--', alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(f"load_test_results_{cluster_size}_nodes.png")
-    print(f"Plot wurde als 'load_test_results_{cluster_size}_nodes.png' gespeichert!")
+    os.makedirs("results", exist_ok=True)
+    plt.savefig(f"results/load_test_results_{cluster_size}_nodes_{MACHINE_TYPE}.png")
+    print(f"Plot wurde als 'load_test_results_{cluster_size}_nodes_{MACHINE_TYPE}.png' gespeichert!")
     plt.show()
 
 if __name__ == "__main__":
     df = fetch_data_from_nodes()
     if df is not None and not df.empty:
+        # Daten als CSV abspeichern für späteren Vergleich
+        cluster_size = len(NODE_IPS)
+        os.makedirs("results", exist_ok=True)
+        csv_filename = f"results/raw_data_{cluster_size}_nodes_{MACHINE_TYPE}.csv"
+        df.to_csv(csv_filename, index=False)
+        print(f"✅ Rohdaten erfolgreich gespeichert unter: {csv_filename}")
+        
         plot_metrics(df)
