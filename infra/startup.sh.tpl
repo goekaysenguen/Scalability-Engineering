@@ -114,9 +114,8 @@ start_stateless() {
     ## vertical scaling based on number of cores
     CORES=$(nproc)
 
-    # concurrent requests a single core can handle
-    CAPACITY_PER_CORE=25 # TODO: per Lasttest diese Zahl evaluieren
-    MAX_API_CAPACITY=$(( CORES * CAPACITY_PER_CORE ))
+    # leave one core for DB/API/Nginx if possible to prevent
+    AI_WORKERS=$(( CORES > 1 ? CORES - 1 : 1 ))
 
     # TODO: 1/3 ist erstmal nur eine schätzung
     DB_MAX_CONN=$(( MAX_API_CAPACITY / 3 ))
@@ -147,7 +146,9 @@ start_stateless() {
 
     # Worker
     docker pull ghcr.io/goekaysenguen/scalability-engineering/worker:latest
-    docker run -d --name worker \
+    for i in $(seq 1 $AI_WORKERS); do
+        echo "Starting Worker $i..."
+        docker run -d --name worker-$i \
       --restart always \
       -e DB_HOSTS="$DB_HOSTS" \
       -e DB_USER="postgres" \
@@ -158,7 +159,7 @@ start_stateless() {
       -e REDIS_QUEUE_NAME="image_tasks" \
       -e MAX_QUEUE_AGE_SECONDS="$MAX_QUEUE_AGE" \
       ghcr.io/goekaysenguen/scalability-engineering/worker:latest
-
+    done
 }
 
 install_docker
