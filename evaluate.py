@@ -1,15 +1,15 @@
-import psycopg2
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import datetime
-import pytz
 from sqlalchemy import create_engine
+import os
 
 # ==========================================
 # 1. KONFIGURATION
 # ==========================================
 # Trage hier die externen IPs deiner GCP Nodes ein (1, 3 oder 5)
-NODE_IPS = ["35.198.155.171", "34.159.57.49", "34.40.68.54"]
+NODE_IPS = ["34.179.194.89", "34.141.52.246", "34.179.214.150", "34.159.154.65", "34.159.180.20"]
+
+MACHINE_TYPE = "e2-medium"
 
 # Startzeitpunkt des K6 Tests (YYYY-MM-DD HH:MM:SS) - Nutze TimeZone Europe/Berlin, also lokale uhrzeit. wird dann in UTC umgerechnet
 # Achte darauf, dass du etwas Puffer nach hinten lässt (z.B. 10 Sek vor K6 Start)
@@ -86,6 +86,9 @@ def plot_metrics(df):
     # Plot 1: Goodput
     ax1.bar(goodput.index, goodput.values, color='green', alpha=0.7, label='Processed Images / sec')
     #ax1.axhline(y=cluster_size, color='r', linestyle='--', label=f'Expected Max Capacity (~{cluster_size} img/s)')
+    ax1.axvline(x=30, color='red', linestyle='--' )
+    ax1.axvline(x=90, color='red', linestyle='--' )
+    ax1.axvline(x=150, color='red', linestyle='--')
     ax1.set_ylabel("Goodput (Images/s)")
     ax1.set_title("System Goodput over Time")
     ax1.legend()
@@ -96,6 +99,10 @@ def plot_metrics(df):
     ax2.plot(latency_p95.index, latency_p95.values, color='orange', linewidth=2, linestyle=':', label='p95 Latency')
     
     ax2.axhline(y=MAX_QUEUE_AGE, color='red', linestyle='--', label=f'Queue Timeout Threshold ({MAX_QUEUE_AGE}s)')
+
+    ax2.axvline(x=30, color='red', linestyle='--' )
+    ax2.axvline(x=90, color='red', linestyle='--' )
+    ax2.axvline(x=150, color='red', linestyle='--')
     
     ax2.set_xlabel("Time since test start (seconds)")
     ax2.set_ylabel("Latency (seconds)")
