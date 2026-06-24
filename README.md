@@ -18,13 +18,16 @@ For local testing, the entire stack (Load Balancer, API, Worker, Database, Queue
    ```
 3. Test the API:
    ```bash
+   # generate Client TaskID for this Image (Idempotency)
+   MY_TASK_ID=$(uuidgen) 
+
    # Submit an image
-   curl -X POST http://localhost:8000/classify \
+   curl -X POST http://34.141.116.140/classify \
         -H "Content-Type: application/json" \
-        -d '{"image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS2FUZMIkoOnHgembMF9InnnlEXenXekksJrA&s"}'
-   
+        -d "{\"image_url\": \"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS2FUZMIkoOnHgembMF9InnnlEXenXekksJrA&s\", \"task_id\": \"$MY_TASK_ID\"}"
+
    # Check the status (replace with your task_id)
-   curl http://localhost:8000/status/<TASK_ID>
+   curl http://<externalIP>/status/$MY_TASK_ID
    ```
 4. Stop the stack:
    ```bash
@@ -64,15 +67,18 @@ The infrastructure is deployed to Google Cloud Platform (GCP) using Terraform. T
    ```bash
    gcloud compute instances list
    ```
-6. Use Node 1 to send request
-   ```
+6. Use Node 1 to send request from you local PC
+   ```bash
+   # generate Client TaskID for this Image (Idempotency)
+   MY_TASK_ID=$(uuidgen) 
+
    # Submit an image
-   curl -X POST http://<externalIP>/classify \
+   curl -X POST http://34.141.116.140/classify \
         -H "Content-Type: application/json" \
-        -d '{"image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS2FUZMIkoOnHgembMF9InnnlEXenXekksJrA&s"}'
-   
+        -d "{\"image_url\": \"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS2FUZMIkoOnHgembMF9InnnlEXenXekksJrA&s\", \"task_id\": \"$MY_TASK_ID\"}"
+
    # Check the status (replace with your task_id)
-   curl http://<externalIP>/status/<TASK_ID>
+   curl http://<externalIP>/status/$MY_TASK_ID
    ```
 
 ### Teardown
