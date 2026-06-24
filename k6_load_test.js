@@ -45,7 +45,10 @@ function clientIdForVu() {
 
 export default function () {
   // Idempotency Key generieren (Eindeutig für diesen Virtual User und diese Iteration)
-  const taskId = `${CLIENT_PREFIX}-vu${exec.vu.idInTest}-iter${exec.vu.iterationInScenario}`;
+  // manuell gültige Fake-UUID konstruiert
+  const vuStr = exec.vu.idInTest.toString().padStart(8, '0');
+  const iterStr = exec.vu.iterationInScenario.toString().padStart(4, '0');
+  const taskId = `${vuStr}-${iterStr}-4000-8000-000000000000`;
 
   const payload = JSON.stringify({ 
       image_url: IMAGE_URL,
