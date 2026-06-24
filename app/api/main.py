@@ -177,6 +177,7 @@ async def multi_tenant_fairness_middleware(request: Request, call_next):
 # --- API ENDPUNKTE ---
 class ImageRequest(BaseModel):
     image_url: str
+    task_id: str
 
 @app.post("/classify")
 def classify_image(req: ImageRequest):
@@ -190,7 +191,9 @@ def classify_image(req: ImageRequest):
     except redis.RedisError as e:
         raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
 
-    task_id = str(uuid.uuid4())
+    # Idempotency Key vom Client nehmen
+    task_id = req.task_id
+    
     conn = None
     try:
         # Verbindung aus dem Pool holen (extrem schnell, kein Handshake nötig)
@@ -198,6 +201,7 @@ def classify_image(req: ImageRequest):
         
         # In DB speichern
         with conn.cursor() as cursor:
+            # ATOMAR: Wenn der Task schon da ist, wirft Postgres einen Fehler!
             cursor.execute(
                 "INSERT INTO tasks (id, status, image_url, created_at) VALUES (%s, 'pending', %s, NOW())",
                 (task_id, req.image_url)
@@ -212,6 +216,16 @@ def classify_image(req: ImageRequest):
         }
         r.lpush(REDIS_QUEUE_NAME, json.dumps(task_payload))
 
+    except UniqueViolation:
+        # HIER GREIFT DIE IDEMPOTENCY (Paper: Making retries safe...)
+        if conn:
+            conn.rollback() # Wichtig, um die Transaktion in Postgres sauber abzuschließen
+        # Wir machen keine weitere Arbeit, geben aber ein semantisch gleiches Ergebnis zurück!
+        return Response(
+            content=json.dumps({"task_id": task_id, "message": "Task already queued (idempotent response)"}), 
+            status_code=202, 
+            media_type="application/json"
+        )
     except HTTPException:
         if conn:
             conn.rollback()
