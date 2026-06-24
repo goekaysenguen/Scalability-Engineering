@@ -92,21 +92,23 @@ docker run --rm -i \
 
 
 
-# 2. weitere TODOs (Fokus auf das Assignment!)
+# TODO: nächsten ToDos
 
-#### Prio 1: Der Load-Test (K6) & Metriken (Zwingend für Req 2!)
-Das Assignment sagt: *"You are required to track a performance metric [...] that you expect to scale with the increasing resources (such as throughput) and present these findings on a slide. You may use a load generator for this, such as K6"*.
-*   **To-Do:** Schreibt ein kleines JavaScript-Skript für **K6**. Dieses Skript soll massenhaft Requests an euren `/classify` Endpunkt schicken.
-*   **Das Ziel:** Ihr müsst beweisen, dass euer System bei 3 Nodes mehr Durchsatz (Throughput) schafft als bei 1 Node.
-*   *Tipp für K6:* Baut in das K6-Skript direkt ein, dass es bei einem `HTTP 503` (eurem Load Shedding) einen **Retry mit Exponential Backoff & Jitter** macht. (Das ist der perfekte Praxis-Beweis für das Paper von Marc Brooker!).
+- [ ] TODO: 1. zweite Strategie aus paper / VL implementieren
+   - wir haben schon: Client bursting (als Erweiterung zur MAX_API_CAPACITY für Load Shedding)
+   - Jitter bei API startup, um DB nicht zu überlasten (aber nicht sicher ob das ausreichend ist)
+   - **NEU**: Idempotency (haben wir schon fast, aber die task_id müsste vom Client generiert werden... siehe Paper Making retries safe with idempotent APIs)
+- [ ] TODO: 2. Bonus Points: Evaluate the impact that using more performant machines has on your application for the previous configurations a, b and c, and also display these results. also einfach nochmal den Test mit e2-standard-4 als machine-type und vielleicht noch einen anderen Plot um die beiden horizontal-scaling besser zu vergleichen.
+- [ ] TODO: sauberes README schreiben. Siehe assignment Abschnitt **Deliverables** für Anforderungen.
+- [ ] TODO: (Am Ende) alles auf englisch und sauberer Code
+- [ ] TODO: Slides / Presentation entwerfen (siehe assignment für Anforderungen)
 
-#### Prio 2: Echtes Idempotency-Handling einbauen (Req 4 / Paper-Bezug)
-Aktuell generiert eure API die `task_id` selbst. Laut dem Paper *"Making retries safe with idempotent APIs"* sollte der **Client** (also euer K6-Test oder Nutzer) die ID mitschicken, z. B. als Header `Idempotency-Key: <UUID>`. 
-*   **To-Do (API):** Ändert die API so, dass sie den `Idempotency-Key` des Clients ausliest. Wenn der Client denselben Key zweimal schickt (z.B. wegen eines Timeouts), darf die API das Bild **nicht** ein zweites Mal in die Queue legen, sondern muss einfach den Status des bereits existierenden Tasks zurückgeben.
-*   **Warum?** Damit habt ihr die zweite Strategie für *Requirement 4* wasserdicht umgesetzt und könnt euch wunderbar auf das Paper beziehen.
+---
 
-#### Prio 3: Präsentation & Slides vorbereiten (Deliverables)
-Ihr habt nur **5 Minuten** für die Präsentation! Das ist extrem kurz. 
-*   1 Slide: Architektur-Diagramm (ähnlich eurem Obsidian Canvas, aber mit klaren Markierungen: "Hier ist Stateless", "Hier ist Stateful", "Hier ist Load Shedding").
-*   1 Slide: Skalierungs-Ergebnisse (Ein Graph aus eurem K6 Load-Test: Balkendiagramm, das zeigt `Throughput bei 1 Node vs 3 Nodes vs 5 Nodes`).
-*   1 Slide: Limitations (Edge Cases diskutieren, z.B. dass Node 0 ein Single Point of Failure ist).
+## Author
+
+Authors: Gökay Sengün, Lorenz Pusch
+
+## Acknowledgments
+
+Parts of this project were developed with the assistance of LLMs.
