@@ -7,13 +7,25 @@ import os
 # ==========================================
 # Welche Dateien sollen verglichen werden? 
 
-HORIZONTAL_OR_VERTICAL = "Horizontal" # "Horizontal" or "Vertical"
+HORIZONTAL_OR_VERTICAL = "Horizontal-std" # "Horizontal-med", "Horizontal-std" or "Vertical"
 
-if HORIZONTAL_OR_VERTICAL == "Horizontal":
+if HORIZONTAL_OR_VERTICAL == "Horizontal-med":
     FILES_TO_COMPARE = {
         "1 Node": "results/raw_data_1_nodes_e2-medium.csv",
         "3 Nodes": "results/raw_data_3_nodes_e2-medium.csv",
         "5 Nodes": "results/raw_data_5_nodes_e2-medium.csv"
+    }
+
+    COLORS = {
+        "1 Node": "#e74c3c",   # Rot
+        "3 Nodes": "#3498db",  # Blau
+        "5 Nodes": "#2ecc71"   # Grün
+    }
+elif HORIZONTAL_OR_VERTICAL == "Horizontal-std":
+    FILES_TO_COMPARE = {
+        "1 Node": "results/raw_data_1_nodes_e2-standard-4.csv",
+        "3 Nodes": "results/raw_data_3_nodes_e2-standard-4.csv",
+        "5 Nodes": "results/raw_data_5_nodes_e2-standard-4.csv"
     }
 
     COLORS = {

@@ -100,11 +100,11 @@ docker run --rm -i \
 
 # TODO: nächsten ToDos
 
-- [ ] TODO: 1. zweite Strategie aus paper / VL implementieren
+- [x] TODO: 1. zweite Strategie aus paper / VL implementieren
    - wir haben schon: Client bursting (als Erweiterung zur MAX_API_CAPACITY für Load Shedding)
    - Jitter bei API startup, um DB nicht zu überlasten (aber nicht sicher ob das ausreichend ist)
    - **NEU**: Idempotency (haben wir schon fast, aber die task_id müsste vom Client generiert werden... siehe Paper Making retries safe with idempotent APIs)
-- [ ] TODO: 2. Bonus Points: Evaluate the impact that using more performant machines has on your application for the previous configurations a, b and c, and also display these results. also einfach nochmal den Test mit e2-standard-4 als machine-type und vielleicht noch einen anderen Plot um die beiden horizontal-scaling besser zu vergleichen.
+- [x] TODO: 2. Bonus Points: Evaluate the impact that using more performant machines has on your application for the previous configurations a, b and c, and also display these results. also einfach nochmal den Test mit e2-standard-4 als machine-type und vielleicht noch einen anderen Plot um die beiden horizontal-scaling besser zu vergleichen.
 - [ ] TODO: sauberes README schreiben. Siehe assignment Abschnitt **Deliverables** für Anforderungen.
 - [ ] TODO: (Am Ende) alles auf englisch und sauberer Code
 - [ ] TODO: Slides / Presentation entwerfen (siehe assignment für Anforderungen)
