@@ -1,0 +1,41 @@
+# ruff.toml
+
+# Eure Docker-Container nutzen Python 3.11, daher setzen wir das als Target
+target-version = "py311"
+
+# 120 Zeichen sind heute Best-Practice (88 von Black ist oft zu kurz für verschachtelte API/Data-Logik)
+line-length = 120
+
+[lint]
+# Welche Linter-Regeln sollen angewendet werden?
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes (z.B. ungenutzte Imports/Variablen)
+    "I",   # isort (Sortierung von Imports)
+    "B",   # flake8-bugbear (Fängt häufige Bugs ab)
+    "C4",  # flake8-comprehensions (Optimiert List-Comprehensions)
+    "UP",  # pyupgrade (Zwingt zur Nutzung moderner Python-Features)
+    "SIM", # flake8-simplify (Macht Code lesbarer, z.B. if-else Vereinfachung)
+]
+
+ignore = [
+    # E501: Line too long. Wird vom Ruff-Formatter sowieso gehandhabt.
+    # Wir wollen keine nervigen Linter-Fehler für lange URLs in Kommentaren.
+    "E501",
+    
+    # B008: Do not perform function calls in argument defaults.
+    # WICHTIG FÜR FASTAPI: FastAPI nutzt oft "def get(db = Depends())". Das würde B008 als Fehler markieren.
+    "B008",
+]
+
+[lint.per-file-ignores]
+# In __init__.py Dateien sind ungenutzte Imports normal und gewollt
+"__init__.py" = ["F401"]
+
+[format]
+# Standard Formatting-Regeln (ähnlich wie 'Black')
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
