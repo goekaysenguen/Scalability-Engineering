@@ -1,18 +1,19 @@
-import os
+import hashlib
 import json
-import uuid
+import os
+import random
+import socket
+import threading
 import time
-import socket 
-import random 
-from psycopg2 import pool
-from psycopg2.errors import UniqueViolation
+import uuid
+from collections import defaultdict
+from contextlib import asynccontextmanager
+
 import redis
 from fastapi import FastAPI, HTTPException, Request, Response
+from psycopg2 import pool
+from psycopg2.errors import UniqueViolation
 from pydantic import BaseModel
-from contextlib import asynccontextmanager
-from collections import defaultdict
-import threading
-import hashlib
 
 # --- KONFIGURATION ---
 REDIS_HOST = os.getenv("REDIS_HOST", None)
@@ -27,9 +28,11 @@ DB_MAX_CONN = int(os.getenv("DB_MAX_CONN", 20))
 # For fairness & load shedding
 GLOBAL_MAX_REQUESTS = int(os.getenv("MAX_API_CAPACITY", 50))
 
+# fmt: off
 CLIENT_SOFT_LIMIT         = GLOBAL_MAX_REQUESTS * 0.2  # Ein Client darf immer 20% Requests haben
 CLIENT_BURST_LIMIT        = GLOBAL_MAX_REQUESTS * 0.5  # Ein Client darf bis 50% haben, NUR bei weniger Gesamtlast
 GLOBAL_THROTTLE_THRESHOLD = GLOBAL_MAX_REQUESTS * 0.8  # Ab 80% Requests im System werden Soft Limits erzwungen
+# fmt: on
 
 # Concurrency Tracker
 active_requests = 0
@@ -46,19 +49,21 @@ def get_db_index(task_id) -> int:
     digest = hashlib.sha256(task_id.bytes).digest()
     return int.from_bytes(digest, "big") % NUMBER_OF_DBS
 
+
 def get_db_pool_and_semaphore(task_id):
     db_index = get_db_index(task_id)
     db_pool = db_pools[db_index]
     db_semaphore = db_semaphores[db_index]
     return db_pool, db_semaphore
 
+
 def setup_db_and_pool():
     global db_pools
-    
+
     # Deterministic Jitter (Ref: Minimizing correlated failures)
     hostname = socket.gethostname()
     random.seed(hostname)
-    
+
     # Between 0 and 3 sec
     startup_jitter = random.uniform(0.0, 3.0)
     print(f"[{hostname}] Jittered Startup: Warte {startup_jitter:.2f}s um DB nicht zu überlasten.")
@@ -76,7 +81,7 @@ def setup_db_and_pool():
                     host=db_host,
                     database=os.getenv("DB_NAME", None),
                     user=os.getenv("DB_USER", None),
-                    password=os.getenv("DB_PASSWORD", None)
+                    password=os.getenv("DB_PASSWORD", None),
                 )
                 db_pools.append(db_pool)
                 break
@@ -85,6 +90,7 @@ def setup_db_and_pool():
                 time.sleep(2 + random.uniform(0.0, 1.0))
         else:
             raise RuntimeError(f"Konnte keine Verbindung zu {db_host} herstellen.")
+
 
 def acquire_db_conn(task_id):
     """
@@ -95,23 +101,18 @@ def acquire_db_conn(task_id):
     acquired = db_semaphore.acquire(timeout=2)
 
     if not acquired:
-        raise HTTPException(
-            status_code=503,
-            detail="Database busy. Please retry later."
-        )
+        raise HTTPException(status_code=503, detail="Database busy. Please retry later.")
 
     try:
         conn = db_pool.getconn()
         return conn
-    except pool.PoolError:
+    except pool.PoolError as e:
         db_semaphore.release()
-        raise HTTPException(
-            status_code=503,
-            detail="Database connection pool exhausted. Please retry later."
-        )
+        raise HTTPException(status_code=503, detail="Database connection pool exhausted. Please retry later.") from e
     except Exception:
         db_semaphore.release()
         raise
+
 
 def release_db_conn(task_id, conn):
     """
@@ -139,25 +140,27 @@ async def lifespan(app: FastAPI):
     if r:
         r.close()
 
+
 app = FastAPI(lifespan=lifespan)
+
 
 # --- MIDDLEWARE FÜR MULTI-TENANT FAIRNESS AND LOAD SHEDDING ---
 @app.middleware("http")
 async def multi_tenant_fairness_middleware(request: Request, call_next):
     global active_requests, client_requests
-    
+
     client_id = request.headers.get("X-Client-ID", "unknown_client")
-    
+
     # 1. Globales Hard Limit (Verhindert Node-Absturz)
     if active_requests >= GLOBAL_MAX_REQUESTS:
         return Response(content="System overloaded.", status_code=503)
-    
+
     client_count = client_requests[client_id]
-    
+
     # 2. Client Hard Burst Limit (Noisy Neighbor Protection)
     if client_count >= CLIENT_BURST_LIMIT:
-        return Response(content="Client burst quota exceeded.", status_code=429) # 429 = Too Many Requests
-        
+        return Response(content="Client burst quota exceeded.", status_code=429)  # 429 = Too Many Requests
+
     # 3. Client Soft Limit (Greift nur, wenn das Gesamtsystem unter Last steht!)
     if client_count >= CLIENT_SOFT_LIMIT and active_requests >= GLOBAL_THROTTLE_THRESHOLD:
         return Response(content="System under heavy load. Client soft quota exceeded.", status_code=429)
@@ -179,52 +182,49 @@ class ImageRequest(BaseModel):
     image_url: str
     task_id: str
 
+
 @app.post("/classify")
 def classify_image(req: ImageRequest):
     """Nimmt ein Bild an und legt es in die Queue (Asynchron)"""
-    
+
     # BACKPRESSURE: Prüfen, ob die Queue zu voll ist ("Avoiding insurmountable queue backlogs")
     try:
         queue_length = r.llen(REDIS_QUEUE_NAME)
         if queue_length >= MAX_QUEUE_SIZE:
             return Response(content="Queue is full (Backpressure limit). Please retry later.", status_code=503)
     except redis.RedisError as e:
-        raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}") from e
 
     # Idempotency Key vom Client nehmen
     task_id = req.task_id
-    
+
     conn = None
     try:
         # Verbindung aus dem Pool holen (extrem schnell, kein Handshake nötig)
         conn = acquire_db_conn(task_id)
-        
+
         # In DB speichern
         with conn.cursor() as cursor:
             # ATOMAR: Wenn der Task schon da ist, wirft Postgres einen Fehler!
             cursor.execute(
                 "INSERT INTO tasks (id, status, image_url, created_at) VALUES (%s, 'pending', %s, NOW())",
-                (task_id, req.image_url)
+                (task_id, req.image_url),
             )
         conn.commit()
-        
+
         # WICHTIG: Timestamp hinzufügen für die Worker TTL Logik!
-        task_payload = {
-            "task_id": task_id, 
-            "image_url": req.image_url,
-            "enqueued_at": time.time()
-        }
+        task_payload = {"task_id": task_id, "image_url": req.image_url, "enqueued_at": time.time()}
         r.lpush(REDIS_QUEUE_NAME, json.dumps(task_payload))
 
     except UniqueViolation:
         # HIER GREIFT DIE IDEMPOTENCY (Paper: Making retries safe...)
         if conn:
-            conn.rollback() # Wichtig, um die Transaktion in Postgres sauber abzuschließen
+            conn.rollback()  # Wichtig, um die Transaktion in Postgres sauber abzuschließen
         # Wir machen keine weitere Arbeit, geben aber ein semantisch gleiches Ergebnis zurück!
         return Response(
-            content=json.dumps({"task_id": task_id, "message": "Task already queued (idempotent response)"}), 
-            status_code=202, 
-            media_type="application/json"
+            content=json.dumps({"task_id": task_id, "message": "Task already queued (idempotent response)"}),
+            status_code=202,
+            media_type="application/json",
         )
     except HTTPException:
         if conn:
@@ -233,13 +233,18 @@ def classify_image(req: ImageRequest):
     except Exception as e:
         if conn:
             conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
         # Verbindung ZWINGEND wieder in den Pool zurückgeben
         if conn:
             release_db_conn(task_id, conn)
 
-    return Response(content=json.dumps({"task_id": task_id, "message": "Task queued"}), status_code=202, media_type="application/json")
+    return Response(
+        content=json.dumps({"task_id": task_id, "message": "Task queued"}),
+        status_code=202,
+        media_type="application/json",
+    )
+
 
 @app.get("/status/{task_id}")
 def get_status(task_id: str):
@@ -247,15 +252,21 @@ def get_status(task_id: str):
     conn = None
     try:
         conn = acquire_db_conn(task_id)
-        
+
         with conn.cursor() as cursor:
             cursor.execute("SELECT status, result, created_at, finished_at FROM tasks WHERE id = %s", (task_id,))
             row = cursor.fetchone()
 
         if not row:
             raise HTTPException(status_code=404, detail="Task not found")
-        
-        return {"task_id": task_id, "status": row[0], "result": row[1], "created_at": row[2].isoformat() if row[2] else None, "finished_at": row[3].isoformat() if row[3] else None}
+
+        return {
+            "task_id": task_id,
+            "status": row[0],
+            "result": row[1],
+            "created_at": row[2].isoformat() if row[2] else None,
+            "finished_at": row[3].isoformat() if row[3] else None,
+        }
     except HTTPException:
         if conn:
             conn.rollback()
@@ -263,7 +274,7 @@ def get_status(task_id: str):
     except Exception as e:
         if conn:
             conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
         if conn:
             release_db_conn(task_id, conn)
