@@ -82,6 +82,18 @@ resource "google_compute_firewall" "allow_ssh" {
   source_ranges = ["0.0.0.0/0"]
 }
 
+# Allow postgres for evaluation
+resource "google_compute_firewall" "allow_postgres" {
+  name    = "allow-postgres"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["5432"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+}
 
 resource "google_compute_instance" "vm" {
   count        = var.cluster_size
