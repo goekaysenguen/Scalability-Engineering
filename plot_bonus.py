@@ -4,10 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# ==========================================
-# 1. KONFIGURATION
-# ==========================================
-# Die Dateinamen eurer 6 Tests
+# CONFIG
 FILES = {
     ("1 Node", "e2-medium"): "results/raw_data_1_nodes_e2-medium.csv",
     ("1 Node", "e2-standard-4"): "results/raw_data_1_nodes_e2-standard-4.csv",
@@ -17,10 +14,10 @@ FILES = {
     ("5 Nodes", "e2-standard-4"): "results/raw_data_5_nodes_e2-standard-4.csv",
 }
 
+MAX_QUEUE_AGE = 30
 NODES = ["1 Node", "3 Nodes", "5 Nodes"]
 MACHINE_TYPES = ["e2-medium", "e2-standard-4"]
-COLORS = ["#3498db", "#2ecc71"]  # Blau für Medium, Grün für Standard-4
-# ==========================================
+COLORS = ["#3498db", "#2ecc71"]  # blue - Medium, green - Standard-4
 
 
 def calculate_metrics(file_path):
@@ -36,21 +33,22 @@ def calculate_metrics(file_path):
     if completed_df.empty:
         return 0, 0
 
-    # Latenz berechnen
+    # calc latency
     completed_df["latency"] = (completed_df["finished_at"] - completed_df["created_at"]).dt.total_seconds()
 
-    # Relative Zeit für Goodput/Sekunde
+    # Relative time for Goodput/sec
     start_time = completed_df["created_at"].min()
     completed_df["sec"] = (completed_df["finished_at"] - start_time).dt.total_seconds().astype(int)
 
     goodput_per_sec = completed_df.groupby("sec").size()
 
-    # Wir nehmen das 90. Perzentil des Goodputs pro Sekunde.
-    # Das ignoriert Ramp-Up/Ramp-Down von K6 und liefert den echten "Max Sustained Goodput"
-    # (also das Plateau, das das System unter Volllast stabil halten konnte).
+    # Use the 90th percentile of goodput per second.
+    # This ignores K6's ramp-up/ramp-down phases and provides the true
+    # "maximum sustained goodput" (i.e., the plateau the system could
+    # stably maintain under full load).
     sustained_goodput = goodput_per_sec.quantile(0.90)
 
-    # Die p95 Latenz über den gesamten Test
+    # The p95 Latency over entire Test
     p95_latency = completed_df["latency"].quantile(0.95)
 
     return sustained_goodput, p95_latency
@@ -60,7 +58,7 @@ def main():
     goodput_data = {mt: [] for mt in MACHINE_TYPES}
     latency_data = {mt: [] for mt in MACHINE_TYPES}
 
-    # Daten extrahieren
+    # Data extraction
     for node in NODES:
         for mt in MACHINE_TYPES:
             file_path = FILES[(node, mt)]
@@ -70,7 +68,7 @@ def main():
 
     # === PLOTTING ===
     x = np.arange(len(NODES))  # Label Locations (0, 1, 2)
-    width = 0.35  # Breite der Balken
+    width = 0.35  # of bars
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
     fig.suptitle("Horizontal & Vertical Scaling Comparison", fontsize=18, fontweight="bold")
@@ -102,7 +100,7 @@ def main():
     ax1.legend(loc="upper left")
     ax1.grid(axis="y", linestyle="--", alpha=0.7)
 
-    # Werte über den Balken anzeigen
+    # show values over bars
     max_heigth = 0
     for bar in bars1 + bars2:
         height = bar.get_height()
@@ -147,12 +145,11 @@ def main():
     ax2.set_xticklabels(NODES, fontsize=12)
     ax2.grid(axis="y", linestyle="--", alpha=0.7)
 
-    # Markierung für Wasted Work Timeout (die 15s oder 30s Grenze)
-    # Passe den Wert hier an, falls ihr 15 oder 30 genutzt habt
-    ax2.axhline(y=30, color="red", linestyle="--", linewidth=2, label="Queue Timeout")
+    # Show MAX_QUEUE_AGE
+    ax2.axhline(y=MAX_QUEUE_AGE, color="red", linestyle="--", linewidth=2, label="Queue Timeout")
     ax2.legend(loc="lower left")
 
-    # Werte über den Balken anzeigen
+    # show values over bars
     max_heigth = 0
     for bar in bars3 + bars4:
         height = bar.get_height()
@@ -174,7 +171,7 @@ def main():
     plt.tight_layout()
     output_file = "results/bonus_scaling_comparison.png"
     plt.savefig(output_file, dpi=300)
-    print(f"✅ Bonus Plot erfolgreich gespeichert unter: {output_file}")
+    print(f"Bonus Plot stored under: {output_file}")
     plt.show()
 
 

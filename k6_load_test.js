@@ -23,9 +23,9 @@ export const options = {
       preAllocatedVUs: 50,
       maxVUs: 200,
       stages: [
-        { duration: '30s', target: 10 }, // Gehe schnell auf 10 Req/s (1 Node ist hier schon leicht überlastet)
-        { duration: '1m', target: 40 },  // Vollgas auf 40 Req/s (Das überlastet selbst 3 Nodes massiv!)
-        { duration: '1m', target: 40 },  // Halte die Überlast für 1 Minute
+        { duration: '30s', target: 10 }, // increase fast to 10 Req/s
+        { duration: '1m', target: 40 },  // go up to 40 Req/s
+        { duration: '1m', target: 40 },  // hold high load for 1 min
         { duration: '30s', target: 0 },  // Cooldown
       ],
     },
@@ -44,15 +44,15 @@ function clientIdForVu() {
 }
 
 export default function () {
-  // Idempotency Key generieren (Eindeutig für diesen Virtual User und diese Iteration)
-  // manuell gültige Fake-UUID konstruiert
+  // Generate an idempotency key (unique for this virtual user and iteration)
+  // Manually construct a valid fake UUID
   const vuStr = exec.vu.idInTest.toString().padStart(8, '0');
   const iterStr = exec.vu.iterationInScenario.toString().padStart(4, '0');
   const taskId = `${vuStr}-${iterStr}-4000-8000-000000000000`;
 
   const payload = JSON.stringify({ 
       image_url: IMAGE_URL,
-      task_id: taskId  // <-- HIER schicken wir die ID mit!
+      task_id: taskId
   });
 
   const params = {
@@ -67,9 +67,9 @@ export default function () {
 
   let res;
   let retries = 3;
-  let backoff = 1.0; // 1 Sekunde initialer Backoff
+  let backoff = 1.0; // initial Backoff
 
-  // 2. Retry Loop mit Exponential Backoff & Jitter (Strategie aus dem Amazon Paper!)
+  // 2. Retry Loop with Exponential Backoff & Jitter
   for (let i = 0; i < retries; i++) {
       res = http.post(`${BASE_URL}/classify`, payload, params);
       
@@ -88,21 +88,21 @@ export default function () {
       if (res.status === 202) {
           tasksQueued.add(1);
           acceptedRate.add(true);
-          break; // Erfolg! Keine Retries mehr nötig.
+          break; // Success!
       } else if (res.status === 429 || res.status === 503) {
           tasksRejected.add(1);
           acceptedRate.add(false);
           
-          // Exponential Backoff + Jitter (Zufallswert zwischen 0 und 0.5 Sekunden)
+          // Exponential Backoff + Jitter (random between 0 and 0.5 sec)
           const jitter = Math.random() * 0.5;
           console.log(`[VU ${exec.vu.idInTest}] Load Shedding (Status ${res.status})! Retrying in ${backoff + jitter}s...`);
           sleep(backoff + jitter);
           
-          backoff *= 2; // Verdopple die Wartezeit für den nächsten Versuch (Exponential)
+          backoff *= 2; // Double the wait time for the next attempt (exponential backoff)
       } else {
           unexpectedResponses.add(1);
           acceptedRate.add(false);
-          break; // Anderer Fehler (z.B. 404, 500), hier retrien wir nicht.
+          break; // Other error... we do not retry.
       }
   }
 

@@ -1,6 +1,6 @@
 # YAML Anchors
 x-common-env: &common-env
-  DB_HOSTS: postgres,postgres2             # Required STRING (none). Hostname of PostgreSQL-DB. Format: <string>
+  DB_HOSTS: postgres,postgres2  # Required STRING (none). Hostname of PostgreSQL-DB. Format: <string>
   DB_USER: postgres             # Required STRING (postgres). Username for target database. Format: <string>
   DB_PASSWORD: postgres         # Required STRING (postgres). Password for target database. Format: <string>
   DB_NAME: scalability          # Required STRING (scalability). Name of the target database. Format: <string>

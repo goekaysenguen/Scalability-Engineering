@@ -3,10 +3,7 @@ import os
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# ==========================================
-# 1. KONFIGURATION
-# ==========================================
-# Welche Dateien sollen verglichen werden?
+# CONFIG
 
 HORIZONTAL_OR_VERTICAL = "Horizontal-std"  # "Horizontal-med", "Horizontal-std" or "Vertical"
 
@@ -18,7 +15,7 @@ if HORIZONTAL_OR_VERTICAL == "Horizontal-med":
     }
 
     COLORS = {
-        "1 Node": "#e74c3c",   # Rot
+        "1 Node": "#e74c3c",  # Rot
         "3 Nodes": "#3498db",  # Blau
         "5 Nodes": "#2ecc71",  # Grün
     }
@@ -30,9 +27,9 @@ elif HORIZONTAL_OR_VERTICAL == "Horizontal-std":
     }
 
     COLORS = {
-        "1 Node": "#e74c3c",   # Rot
-        "3 Nodes": "#3498db",  # Blau
-        "5 Nodes": "#2ecc71",  # Grün
+        "1 Node": "#e74c3c",  # Red
+        "3 Nodes": "#3498db",  # Blue
+        "5 Nodes": "#2ecc71",  # Green
     }
 else:
     FILES_TO_COMPARE = {
@@ -42,26 +39,25 @@ else:
     }
 
     COLORS = {
-        "e2-standard-2": "#e74c3c",  # Rot
-        "e2-standard-4": "#3498db",  # Blau
-        "e2-standard-8": "#2ecc71",  # Grün
+        "e2-standard-2": "#e74c3c",  # Red
+        "e2-standard-4": "#3498db",  # Blue
+        "e2-standard-8": "#2ecc71",  # Green
     }
 
-# Timeout Limit, das wir im Worker eingestellt haben (für die rote Hilfslinie)
+# Timeout Limit, set for the worker. (plotted as red horizontal line)
 MAX_QUEUE_AGE_SECONDS = 30
-# ==========================================
 
 
 def process_csv(file_path):
     df = pd.read_csv(file_path)
 
-    # Strings zurück in Datetime-Objekte umwandeln
+    # Convert Strings to Datetime-Objects
     df["created_at"] = pd.to_datetime(df["created_at"])
     df["finished_at"] = pd.to_datetime(df["finished_at"])
 
     start_time = df["created_at"].min()
 
-    # Nur erfolgreiche Tasks betrachten
+    # filter for succeeded tasks
     completed_df = df[df["status"] == "completed"].copy()
     if completed_df.empty:
         return None, None, None
@@ -69,7 +65,7 @@ def process_csv(file_path):
     completed_df["latency"] = (completed_df["finished_at"] - completed_df["created_at"]).dt.total_seconds()
     completed_df["relative_finish_sec"] = (completed_df["finished_at"] - start_time).dt.total_seconds().astype(int)
 
-    # Aggregieren
+    # aggregate
     goodput = completed_df.groupby("relative_finish_sec").size()
     latency_avg = completed_df.groupby("relative_finish_sec")["latency"].mean()
     latency_p95 = completed_df.groupby("relative_finish_sec")["latency"].quantile(0.95)
@@ -83,7 +79,7 @@ def main():
 
     for label, file_path in FILES_TO_COMPARE.items():
         if not os.path.exists(file_path):
-            print(f"WARNUNG: Datei {file_path} nicht gefunden. Überspringe {label}...")
+            print(f"WARNING: File {file_path} not found. Skip {label}...")
             continue
 
         goodput, latency_avg, latency_p95 = process_csv(file_path)
@@ -92,8 +88,8 @@ def main():
 
         color = COLORS[label]
 
-        # Plot 1: Goodput (als Linie, damit es bei 3 Vergleichen lesbar bleibt)
-        # rolling(3).mean() glättet die Linie leicht (Moving Average über 3 Sekunden)
+        # Plot 1: Goodput
+        # rolling(3).mean() smooths the line slightly (3-second moving average)
         smoothed_goodput = (
             goodput.reindex(range(goodput.index.max() + 1), fill_value=0).rolling(window=3, min_periods=1).mean()
         )
@@ -102,12 +98,11 @@ def main():
             smoothed_goodput.index, smoothed_goodput.values, color=color, linewidth=2.5, label=f"{label} (Goodput)"
         )
 
-        # Plot 2: Latency
+        # Plot 2: avg Latency
         ax2.plot(latency_avg.index, latency_avg.values, color=color, linewidth=2.5, label=f"{label} (Avg)")
-        # P95 Latenz gestrichelt hinzufügen
+        # add P95 Latenz
         ax2.plot(latency_p95.index, latency_p95.values, color=color, linestyle=":", alpha=0.6, label=f"{label} (p95)")
 
-    # Styling Goodput Plot
     ax1.axvline(x=30, color="red", linestyle="--")
     ax1.axvline(x=90, color="red", linestyle="--")
     ax1.axvline(x=150, color="red", linestyle="--")
@@ -116,7 +111,6 @@ def main():
     ax1.legend(loc="upper left")
     ax1.grid(True, linestyle="--", alpha=0.5)
 
-    # Styling Latency Plot
     ax2.axhline(
         y=MAX_QUEUE_AGE_SECONDS,
         color="black",
@@ -130,7 +124,6 @@ def main():
     ax2.axvline(x=150, color="red", linestyle="--")
     ax2.set_ylabel("Latency (seconds)", fontsize=12)
     ax2.set_title("End-to-End Latency over Time", fontsize=14)
-    # Legende außerhalb oder klein halten
     ax2.legend(loc="upper left", ncol=2, fontsize=10)
     ax2.grid(True, linestyle="--", alpha=0.5)
 
@@ -138,7 +131,7 @@ def main():
     os.makedirs("results", exist_ok=True)
     output_file = f"results/comparison_plot_{HORIZONTAL_OR_VERTICAL}.png"
     plt.savefig(output_file, dpi=300)
-    print(f"✅ Vergleichs-Plot erfolgreich gespeichert unter: {output_file}")
+    print(f"Comparison-Plot stored under: {output_file}")
     plt.show()
 
 

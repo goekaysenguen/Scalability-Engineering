@@ -114,7 +114,7 @@ start_stateless() {
     ## vertical scaling based on number of cores
     CORES=$(nproc)
 
-    # leave one core for DB/API/Nginx if possible to prevent
+    # leave one core for DB/API/Nginx if possible to prevent overload
     AI_WORKERS=$(( CORES > 1 ? CORES - 1 : 1 ))
 
     # concurrent requests a single node can handle
@@ -129,8 +129,6 @@ start_stateless() {
     MAX_QUEUE_AGE=30
     MAX_GLOBAL_QUEUE_SIZE=$(( THROUGHPUT * MAX_QUEUE_AGE * NUM_WORKER))
 
-
-    # TODO: einige ENV-variablen in variables.tf schreiben damit wir nicht zweimal angeben müssen?
     # API
     docker pull ghcr.io/goekaysenguen/scalability-engineering/api:latest
     docker run -d --name api -p "$API_PORT":8000 \

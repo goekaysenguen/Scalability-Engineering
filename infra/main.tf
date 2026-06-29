@@ -3,8 +3,8 @@ locals {
     for i in range(var.cluster_size) : cidrhost("10.10.0.0/24", i + 10)
   ]
 
-  # Bei Cluster-Size = 1: API läuft auf Node 0
-  # Bei Cluster-Size > 1: APIs laufen NUR auf Node 1 bis N (Node 0 bleibt Loadbalancer/Redis vorbehalten)
+  # Cluster-Size = 1: API and worker run on Node 0
+  # Cluster-Size > 1: APIs and workers runn ONLY on Node 1 to N (Node 0 only for Loadbalancer/Redis)
   api_ips = var.cluster_size == 1 ? [
     local.node_ips[0]
   ] : slice(local.node_ips, 1, var.cluster_size)
@@ -17,7 +17,7 @@ locals {
 
   redis_ip = local.node_ips[0]
 
-  # Die Datenbank skaliert immer über ALLE verfügbaren Nodes (inkl. Node 0)
+  # The DB scales over all Nodes... also Node 0
   db_ips = local.node_ips
   db_hosts = join(",", local.db_ips)
 }

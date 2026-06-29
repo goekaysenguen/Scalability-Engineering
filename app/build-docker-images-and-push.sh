@@ -25,8 +25,8 @@ case "$1" in
     build_and_push_api
     ;;
   *)
-    echo "Ungültiges Argument: $1"
-    echo "Verwendung: $0 [api|worker]"
+    echo "Invalid Argument: $1"
+    echo "Use: $0 [api|worker]"
     exit 1
     ;;
 esac
