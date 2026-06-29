@@ -22,12 +22,12 @@ For local testing, the entire stack (Load Balancer, API, Worker, Database, Queue
    MY_TASK_ID=$(uuidgen) 
 
    # Submit an image
-   curl -X POST http://34.141.116.140/classify \
+   curl -X POST http://localhost:8001/classify \
         -H "Content-Type: application/json" \
         -d "{\"image_url\": \"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS2FUZMIkoOnHgembMF9InnnlEXenXekksJrA&s\", \"task_id\": \"$MY_TASK_ID\"}"
 
    # Check the status (replace with your task_id)
-   curl http://<externalIP>/status/$MY_TASK_ID
+   curl http://localhost:8001/status/$MY_TASK_ID
    ```
 4. Stop the stack:
    ```bash
