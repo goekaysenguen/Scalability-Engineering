@@ -1,7 +1,7 @@
 # Scalability Engineering: AI Image Classification System
 
 **Authors:** Gökay Sengün, Lorenz Pusch  
-**Context:** Prototyping Assignment, Scalability Engineering (Summer Semester 2026)
+**Context:** Prototyping Assignment, Scalability Engineering (Summer Semester 2026)  
 **Note:** Code in this project was developed with the assistance of LLMs
 
 This repository contains the complete infrastructure as code, application code, evaluation scripts, results and slides of the talk.
