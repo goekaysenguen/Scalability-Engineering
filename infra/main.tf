@@ -56,13 +56,27 @@ resource "google_compute_firewall" "allow_internal" {
 }
 
 
-resource "google_compute_firewall" "allow_all" {
-  # for testing purposes; should be removed later
-  name    = "allow-all"
+# allow http for loadbalancer (port can be changed, but is likely port 80)
+resource "google_compute_firewall" "allow_external_http" {
+  name    = "allow-external-http"
   network = google_compute_network.vpc.name
 
   allow {
-    protocol = "all"
+    protocol = "tcp"
+    ports    = [var.loadbalancer_port] 
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+}
+
+# Allow SSH
+resource "google_compute_firewall" "allow_ssh" {
+  name    = "allow-ssh"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
   }
 
   source_ranges = ["0.0.0.0/0"]
