@@ -66,6 +66,7 @@ if client_count >= CLIENT_SOFT_LIMIT and active_requests >= GLOBAL_THROTTLE_THRE
 
 ### Strategy 2: Backpressure
 According to Little's Law ($L = \lambda \times W$), an insurmountable queue backlog leads to wasted work. Thats why the API refuses to enqueue new images if the Redis queue exceeds `MAX_GLOBAL_QUEUE_SIZE`. According to the Law we calculate the queue size as follows:
+
 ```sh
 # from infra/startup.sh.tpl
 MAX_GLOBAL_QUEUE_SIZE=$(( THROUGHPUT * MAX_QUEUE_AGE * NUM_WORKER))
@@ -106,8 +107,9 @@ To prevent a "thundering herd" of database connections upon cluster startup, the
     fi
     ```
 *   **Vertical:** Changing `machine_type` (e.g., from `e2-medium` to `e2-standard-4`) allocates more CPU cores. Our `startup.sh.tpl` dynamically detects the available cores via `$(nproc)` and spins up the corresponding amount of AI-Worker containers to utilize the available resources more efficient.
+
 	```sh
-   # from infra/startup.sh.tpl
+    # from infra/startup.sh.tpl
 	# vertical scaling based on number of cores
 	CORES=$(nproc)
 	# leave one core for DB/API/Nginx if possible to prevent overload
@@ -117,7 +119,7 @@ To prevent a "thundering herd" of database connections upon cluster startup, the
 ### Measured Scalability Results
 We tracked the **Sustained Goodput** (successfully processed images per second) and the **Avg. and p95 End-to-End Latency** using `k6` using the following stages:
 ```js
-# from k6_load_test.js
+// from k6_load_test.js
 stages: [
   { duration: '30s', target: 10 }, // increase fast to 10 Req/s
   { duration: '1m', target: 40 },  // go up to 40 Req/s
