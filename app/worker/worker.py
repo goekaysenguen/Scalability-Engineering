@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import json
 import os
@@ -47,10 +48,19 @@ def get_db_index(task_id) -> int:
 def get_db_connections():
     """Baut eine Verbindung zur Datenbank auf."""
     connections = []
-    for db_host in DB_HOSTS:
-        conn = psycopg2.connect(host=db_host, database=DB_NAME, user=DB_USER, password=DB_PASS, connect_timeout=5)
-        connections.append(conn)
-    return connections
+    try:
+        for db_host in DB_HOSTS:
+            conn = psycopg2.connect(host=db_host, database=DB_NAME, user=DB_USER, password=DB_PASS, connect_timeout=5)
+            connections.append(conn)
+        # Only if all connections succeeded, we return the list
+        return connections
+    except Exception as e:
+        # If a connection does not succeed: Close all other connections
+        for c in connections:
+            with contextlib.suppress(Exception):
+                c.close()
+        # propagate the error
+        raise e
 
 
 def download_image(url):
