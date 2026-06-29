@@ -18,7 +18,7 @@ variable "machine_type" {
   description = "GCP machine type for all VMs"
   type        = string
   default     = "e2-medium" # vertical-scaling test: e2-standard-2, e2-standard-4, e2-standard-8
-                            # horizontal testing: e2-medium (ist günstiger)
+                            # horizontal testing: e2-medium (cheaper), e2-standard-4 (bonus-task)
 }
 
 
