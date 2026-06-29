@@ -8,6 +8,8 @@ This repository contains the complete infrastructure as code, application code, 
 
 The project follows the principles from the Scalability Engineering lectures and best practices from the Amazon Builders' Library (e.g., Load Shedding, Backpressure, Idempotency, and Deterministic Jitter).
 
+Our project implements an AI Image Classification System. The user sends an image as URL and the system will then classify it using MobileNetV3 from Tensorflow. The result (class of the image, e.g. dog / cat) is stored in the Database and can be queried.
+
 ---
 
 ## 1. Application Architecture
