@@ -231,6 +231,13 @@ cd infra
 terraform destroy # type the amount of nodes you spun up and now want to destroy
 ```
 
+#### Step 5: Comparison of Setups
+
+When you have done the steps above for different setups (machine types and number of nodes) you can use `comparison-scrips.py` to plot them together for direct comparison. To do so, edit the CONFIG section at the beginning of that file. We used is to evaluate the impact of horizontal and vertical scaling.
+
+The file `bonus_plot.py` also compares different deployments, but plots them in an other way to see directly the impact of horizontal scaling using a more performant machine type.
+
+
 ### Local Development
 
 In order to test the application code we provided a local setup using docker compose.
