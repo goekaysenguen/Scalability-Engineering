@@ -73,7 +73,12 @@ According to Little's Law ($L = \lambda \times W$), an insurmountable queue back
 # from infra/startup.sh.tpl
 MAX_GLOBAL_QUEUE_SIZE=$(( THROUGHPUT * MAX_QUEUE_AGE * NUM_WORKER))
 ```
-where THROUGHPUT is the speed at which a worker node processes images per second, and NUM_WORKER is the number of worker-nodes.
+where THROUGHPUT is the speed at which a worker node processes images per second, and NUM_WORKER is the number of worker-nodes. If the queue size is reached, new tasks are rejected.
+```python
+# from from app/api/main.py
+if queue_length >= MAX_QUEUE_SIZE:
+   return Response(content="Queue is full. Please retry later.", status_code=503)
+```
 Additionally, the worker evaluates `AgeOfFirstAttempt`: if a task has been waiting in the queue for more than `MAX_QUEUE_AGE_SECONDS` (e.g., 30s), it is instantly dropped without wasting CPU on AI inference.
 
 ### Strategy 3: Safe Retries via Idempotent APIs
