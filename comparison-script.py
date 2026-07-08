@@ -108,7 +108,7 @@ def main():
     ax1.axvline(x=150, color="red", linestyle="--")
     ax1.set_ylabel("Goodput (Images/s)", fontsize=12)
     ax1.set_title("System Goodput over Time (3s Moving Avg)", fontsize=14)
-    ax1.legend(loc="upper left")
+    ax1.legend(loc="upper left", bbox_to_anchor=(0, 0.95))
     ax1.grid(True, linestyle="--", alpha=0.5)
 
     ax2.axhline(
@@ -124,8 +124,77 @@ def main():
     ax2.axvline(x=150, color="red", linestyle="--")
     ax2.set_ylabel("Latency (seconds)", fontsize=12)
     ax2.set_title("End-to-End Latency over Time", fontsize=14)
-    ax2.legend(loc="upper left", ncol=2, fontsize=10)
+    ax2.legend(loc="upper left", ncol=2, fontsize=10, bbox_to_anchor=(0, 0.95))
     ax2.grid(True, linestyle="--", alpha=0.5)
+
+    # annotation
+    ax1.text(
+        15,
+        0.97,
+        "Increase to 10 req/s",
+        ha="center",
+        va="center",
+        transform=ax1.get_xaxis_transform()
+    )
+    ax2.text(
+        15,
+        0.97,
+        "Increase to 10 req/s",
+        ha="center",
+        va="center",
+        transform=ax2.get_xaxis_transform()
+    )
+
+    ax1.text(
+        60,
+        0.97,
+        "Increase to 40 req/s",
+        ha="center",
+        va="center",
+        transform=ax1.get_xaxis_transform()
+    )
+    ax2.text(
+        60,
+        0.97,
+        "Increase to 40 req/s",
+        ha="center",
+        va="center",
+        transform=ax2.get_xaxis_transform()
+    )
+
+    ax1.text(
+        120,
+        0.97,
+        "Hold 40 req/s",
+        ha="center",
+        va="center",
+        transform=ax1.get_xaxis_transform()
+    )
+    ax2.text(
+        120,
+        0.97,
+        "Hold 40 req/s",
+        ha="center",
+        va="center",
+        transform=ax2.get_xaxis_transform()
+    )
+
+    ax1.text(
+        165,
+        0.97,
+        "Decrease to 0 req/s",
+        ha="center",
+        va="center",
+        transform=ax1.get_xaxis_transform()
+    )
+    ax2.text(
+        165,
+        0.97,
+        "Decrease to 0 req/s",
+        ha="center",
+        va="center",
+        transform=ax2.get_xaxis_transform()
+    )
 
     plt.tight_layout()
     os.makedirs("results", exist_ok=True)

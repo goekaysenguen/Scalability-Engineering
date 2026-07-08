@@ -5,7 +5,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 
 # CONFIG
-# Specify here the external IPs of your GCP Nodes (1, 3 oder 5)
+# Specify here the external IPs of your GCP Nodes (1, 3 or 5)
 NODE_IPS = ["34.179.194.89", "34.141.52.246", "34.179.214.150", "34.159.154.65", "34.159.180.20"]
 
 MACHINE_TYPE = "e2-medium"
@@ -92,7 +92,7 @@ def plot_metrics(df):
     ax1.axvline(x=150, color="red", linestyle="--")
     ax1.set_ylabel("Goodput (Images/s)")
     ax1.set_title("System Goodput over Time")
-    ax1.legend()
+    ax1.legend(loc="upper right", bbox_to_anchor=(1.0, 1.1))
     ax1.grid(True, linestyle="--", alpha=0.5)
 
     # Plot 2: Latency
@@ -110,6 +110,75 @@ def plot_metrics(df):
     ax2.set_title("End-to-End Latency over Time")
     ax2.legend()
     ax2.grid(True, linestyle="--", alpha=0.5)
+
+    # annotation
+    ax1.text(
+        15,
+        0.97,
+        "Increase to 10 req/s",
+        ha="center",
+        va="center",
+        transform=ax1.get_xaxis_transform()
+    )
+    ax2.text(
+        15,
+        0.97,
+        "Increase to 10 req/s",
+        ha="center",
+        va="center",
+        transform=ax2.get_xaxis_transform()
+    )
+
+    ax1.text(
+        60,
+        0.97,
+        "Increase to 40 req/s",
+        ha="center",
+        va="center",
+        transform=ax1.get_xaxis_transform()
+    )
+    ax2.text(
+        60,
+        0.97,
+        "Increase to 40 req/s",
+        ha="center",
+        va="center",
+        transform=ax2.get_xaxis_transform()
+    )
+
+    ax1.text(
+        120,
+        0.97,
+        "Hold 40 req/s",
+        ha="center",
+        va="center",
+        transform=ax1.get_xaxis_transform()
+    )
+    ax2.text(
+        120,
+        0.97,
+        "Hold 40 req/s",
+        ha="center",
+        va="center",
+        transform=ax2.get_xaxis_transform()
+    )
+
+    ax1.text(
+        165,
+        0.97,
+        "Decrease to 0 req/s",
+        ha="center",
+        va="center",
+        transform=ax1.get_xaxis_transform()
+    )
+    ax2.text(
+        165,
+        0.97,
+        "Decrease to 0 req/s",
+        ha="center",
+        va="center",
+        transform=ax2.get_xaxis_transform()
+    )
 
     plt.tight_layout()
     os.makedirs("results", exist_ok=True)
