@@ -94,7 +94,11 @@ To prevent a "thundering herd" of database connections upon cluster startup, the
 ### Scaling Horizontal & Vertical
 *   **Horizontal:**  Running `terraform apply` it will be asked how many nodes/VMs should be provisioned. The startup script automatically does the scaling. As shown in the [[#Architecture Diagram]] above, we use the following mechanism when more then one node is provisioned:
 	* *The Loadbalancer and Redis* do not scale/replicate and stay always on Node 0. But the MAX_GLOBAL_QUEUE_SIZE is dynamic and increases with the number of Nodes
-	* *The PostgresSQL DB* gets sharded over every node
+	* *The PostgresSQL DB* gets sharded over every node. We compute the DB index for each request based on the id's hash.
+    ```python
+    digest = hashlib.sha256(task_id.bytes).digest()
+    return int.from_bytes(digest, "big") % NUMBER_OF_DBS
+    ```
 	* *The API and AIWorker* get scaled on every node except Node 0 in order to provide Node 0 enough compute power for large horizontal scales
     ```sh
     # from infra/startup.sh.tpl
