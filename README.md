@@ -158,7 +158,7 @@ The impact of a more performant VM can be clearly seen also when we scale it hor
 ## 4. Limitations
 
 While scalable, our current architecture has known limitations:
-1.  **Single Point of Failure (Node 0):** Currently, the Nginx Load Balancer and the Redis Queue strictly reside on Node 0. If Node 0 crashes, the entire system becomes inaccessible. Node 0 is also the only node running the loadbalancer and the redis queue both of which can be a bottleneck at high loads.
+1.  **Single Point of Failure (Node 0):** Currently, the Nginx Load Balancer and the Redis Queue strictly reside on Node 0. If Node 0 crashes, the entire system becomes inaccessible. Node 0 is also the only node running the loadbalancer and the redis queue both of which can be a bottleneck at high loads or big cluster sizes.
 2.  **Dynamic Scaling:** Our setup does not scale automatically. If you want to scale it, it has to be shutdown first with the consequences of loosing all data in the DBs for now. However, if the data in the DB would survive, our database sharding uses a simple modulo operation (`hash(task_id) % NUMBER_OF_DBS`). If we scale out from 3 to 5 nodes dynamically while tasks are being processed, the hashes will resolve to different databases, leading to "Task Not Found" errors or similar. 
 3. **Hyperparameters:** There are some Hyperparameter we set intuitively without any point of reference or test:
 	- MAX_API_CAPACITY = 100: Concurrent requests the API can handle
