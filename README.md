@@ -40,7 +40,7 @@ graph TD
     W -->|"4. Update Status & Result"| DB
 ```
 
-*   **Stateless Components:** The `API` (FastAPI) and the `AI Worker` (Python/TensorFlow) hold no state. The API asynchronously accepts requests and the workers process images from the queue. For more details about how this scales see [[#Scaling Horizontal & Vertical]].
+*   **Stateless Components:** The `API` (FastAPI) and the `AI Worker` (Python/TensorFlow) hold no state. The API asynchronously accepts requests and the workers process images from the queue. For more details about how this scales see [Scaling Horizontal and Vertical](#scaling-horizontal-and-vertical).
 *   **Stateful Components:** The `Redis` queue manages the backlog of tasks. `PostgreSQL` stores the metadata and classification results. 
 *   **Sharding:** To avoid a database bottleneck, PostgreSQL is sharded across all available nodes (key-based sharding). The API and Worker route to a specific database shard by hashing the `task_id` (`hash(task_id) % NUMBER_OF_DBS`).
 
@@ -91,8 +91,8 @@ To prevent a "thundering herd" of database connections upon cluster startup, the
 
 ## 3. Scaling Process
 
-### Scaling Horizontal & Vertical
-*   **Horizontal:**  Running `terraform apply` it will be asked how many nodes/VMs should be provisioned. The startup script automatically does the scaling. As shown in the [[#Architecture Diagram]] above, we use the following mechanism when more then one node is provisioned:
+### Scaling Horizontal and Vertical
+*   **Horizontal:**  Running `terraform apply` it will be asked how many nodes/VMs should be provisioned. The startup script automatically does the scaling. As shown in the [Architecture Diagram](#architecture-diagram) above, we use the following mechanism when more then one node is provisioned:
 	* *The Loadbalancer and Redis* do not scale/replicate and stay always on Node 0. But the MAX_GLOBAL_QUEUE_SIZE is dynamic and increases with the number of Nodes
 	* *The PostgresSQL DB* gets sharded over every node. We compute the DB index for each request based on the id's hash.
     ```python
@@ -158,17 +158,23 @@ The impact of a more performant VM can be clearly seen also when we scale it hor
 ## 4. Limitations
 
 While scalable, our current architecture has known limitations:
-1.  **Single Point of Failure (Node 0):** Currently, the Nginx Load Balancer and the Redis Queue strictly reside on Node 0. If Node 0 crashes, the entire system becomes inaccessible.
-2.  **Dynamic Scaling:** Our setup does not scale automatically. If you want to scale it, it has de be shutdown first with the consequences of loosing all data in the DBs for now. However, if the data in the DB would survive, our database sharding uses a simple modulo operation (`hash(task_id) % NUMBER_OF_DBS`). If we scale out from 3 to 5 nodes dynamically while tasks are being processed, the hashes will resolve to different databases, leading to "Task Not Found" errors or similar. 
+1.  **Single Point of Failure (Node 0):** Currently, the Nginx Load Balancer and the Redis Queue strictly reside on Node 0. If Node 0 crashes, the entire system becomes inaccessible. Node 0 is also the only node running the loadbalancer and the redis queue both of which can be a bottleneck at high loads.
+2.  **Dynamic Scaling:** Our setup does not scale automatically. If you want to scale it, it has to be shutdown first with the consequences of loosing all data in the DBs for now. However, if the data in the DB would survive, our database sharding uses a simple modulo operation (`hash(task_id) % NUMBER_OF_DBS`). If we scale out from 3 to 5 nodes dynamically while tasks are being processed, the hashes will resolve to different databases, leading to "Task Not Found" errors or similar. 
 3. **Hyperparameters:** There are some Hyperparameter we set intuitively without any point of reference or test:
 	- MAX_API_CAPACITY = 100: Concurrent requests the API can handle
-	- DB_MAX_CONN = 20: open DB connections used by the API 
+	- DB_MAX_CONN = 20: open DB connections used by the API per db shard
 	- THROUGHPUT=$(( CORES * 5 )): The AI-Worker inferences 5 images per core and second (this is somehow also seen in the result-plots)
 	- MAX_QUEUE_AGE = 30: Queue Timeout after that the worker will not process the task
 
 ---
 
-## 5. Reproducibility Tutorial
+## 5. Deployment
+
+Our Terraform setup provisions all required GCP resources and starts the application via a startup script. The application consists of multiple components, including our API and AI worker, which are packaged as separate Docker images and launched by the startup script. The Docker images are built automatically by GitHub Actions using the application code from this repository. Additional services, such as the load balancer, Redis queue, and PostgreSQL database, are also run as Docker containers.
+
+---
+
+## 6. Reproducibility Tutorial
 
 Follow these steps to deploy, load-test, and evaluate the system.
 
@@ -182,6 +188,14 @@ Follow these steps to deploy, load-test, and evaluate the system.
 ### Cloud Deployment
 
 #### Step 1: Cloud Deployment
+Change the project_id in `infra/variables.tf` to match your gcp project id.
+```terraform
+variable "project_id" {
+  description = "Google Cloud Console Project Id"
+  type        = string
+  default     = "scalability-engineering" # change to your project id
+}
+```
 Navigate to the `infra/` directory and apply a configuration:
 ```bash
 cd infra
@@ -194,7 +208,7 @@ terraform apply # you will be asked how many node you want to spin up
 
 #### Step 2: Run the K6 Load Test
 **Note:** Wait after terraform finished, until all containers on the nodes started successfully. 
-You can check with `gcloud compute ssh node-2` and then `docker ps`. The worker(s) will take the longest. Wait until you can see it in the list!
+You can check with `gcloud compute ssh node-2` or (`gcloud compute ssh node-1` in single node deployment) and then `docker ps`. The worker(s) will take the longest. Wait until you can see it in the list!
 
 You can test if the setup is running by sending a single request:
 ```sh
@@ -242,7 +256,7 @@ terraform destroy # type the amount of nodes you spun up and now want to destroy
 
 #### Step 5: Comparison of Setups
 
-When you have done the steps above for different setups (machine types and number of nodes) you can use `comparison-scrips.py` to plot them together for direct comparison. To do so, edit the CONFIG section at the beginning of that file. We used is to evaluate the impact of horizontal and vertical scaling.
+When you have done the steps above for different setups (machine types and number of nodes) you can use `comparison-script.py` to plot them together for direct comparison. To do so, edit the CONFIG section at the beginning of that file. We used it to evaluate the impact of horizontal and vertical scaling.
 
 The file `bonus_plot.py` also compares different deployments, but plots them in an other way to see directly the impact of horizontal scaling using a more performant machine type.
 
@@ -266,7 +280,7 @@ docker compose up --build -d
 
 #### Step 2: Test the Setup
 
-You can test the stack by sending single requests. We have not test the local setup using k6.
+You can test the stack by sending single requests. We did not test the local setup using k6.
 ```sh
 # generate Client TaskID for this Image (Idempotency)
 MY_TASK_ID=$(uuidgen) 
@@ -285,16 +299,3 @@ curl http://localhost:8001/status/$MY_TASK_ID
 ```sh
 docker compose down
 ```
-
-
-# TODO: nächsten ToDos
-
-- [x] TODO: 1. zweite Strategie aus paper / VL implementieren
-   - wir haben schon: Client bursting (als Erweiterung zur MAX_API_CAPACITY für Load Shedding)
-   - Jitter bei API startup, um DB nicht zu überlasten (aber nicht sicher ob das ausreichend ist)
-   - **NEU**: Idempotency (haben wir schon fast, aber die task_id müsste vom Client generiert werden... siehe Paper Making retries safe with idempotent APIs)
-- [x] TODO: 2. Bonus Points: Evaluate the impact that using more performant machines has on your application for the previous configurations a, b and c, and also display these results. also einfach nochmal den Test mit e2-standard-4 als machine-type und vielleicht noch einen anderen Plot um die beiden horizontal-scaling besser zu vergleichen.
-- [x] TODO: (Am Ende) alles auf englisch und sauberer Code (ruff) + nochmal testen
-- [x] TODO: sauberes README schreiben. Siehe assignment Abschnitt **Deliverables** für Anforderungen. - README TUTORIAL NOCHMAL TESTEN
-- [ ] TODO: Slides / Presentation entwerfen (siehe assignment für Anforderungen)
-- [ ] TODO: Diese TODOs rauslöschen

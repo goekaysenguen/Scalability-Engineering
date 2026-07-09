@@ -38,6 +38,15 @@ print("Model loaded successfully.")
 
 
 def get_db_index(task_id) -> int:
+    """
+    Calculates db index based on the id's hash.
+
+    Args:
+        task_id: The task ID used to determine the target database.
+
+    Returns:
+        The db index.
+    """
     if isinstance(task_id, str):
         task_id = uuid.UUID(task_id)
     digest = hashlib.sha256(task_id.bytes).digest()
@@ -45,6 +54,12 @@ def get_db_index(task_id) -> int:
 
 
 def get_db_connections():
+    """
+    Initializes db connection for all hosts in DB_HOSTS.
+
+    Returns:
+        List of db connections.
+    """
     connections = []
     try:
         for db_host in DB_HOSTS:
@@ -62,6 +77,15 @@ def get_db_connections():
 
 
 def download_image(url):
+    """
+    Downloads image from url.
+
+    Args:
+        url: url to image
+
+    Returns:
+        Image object
+    """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
@@ -73,6 +97,18 @@ def download_image(url):
 
 
 def predict_image(img):
+    """
+    Runs prediction on the impage using MobileNetV3.
+
+    - Resizes the image object to (224x224)
+    - Runs MobileNetV3 prediction
+
+    Args:
+        img: Image object
+
+    Returns:
+        The best match
+    """
     # Resize imagesize for MobileNetV3 (224x224)
     img = img.resize((224, 224))
     x = keras_image.img_to_array(img)
@@ -87,6 +123,16 @@ def predict_image(img):
 
 
 def process_task(task, conns):
+    """
+    Processes tasks from queue and writes result to db.
+
+    - Resizes the image object to (224x224)
+    - Runs MobileNetV3 prediction
+
+    Args:
+        task: Task from redis queue
+        conns: List of db connections
+    """
     task_id = task.get("task_id")
     image_url = task.get("image_url")
     enqueued_at = task.get("enqueued_at", 0)
@@ -112,7 +158,7 @@ def process_task(task, conns):
             return
 
         # 2. IDEMPOTENCY CHECK
-        # Check, if task is already compleded (Prevents duplicate work)
+        # Check, if task is already completed (Prevents duplicate work)
         cursor.execute("SELECT status FROM tasks WHERE id = %s", (task_id,))
         row = cursor.fetchone()
         if not row:
@@ -173,6 +219,13 @@ def process_task(task, conns):
 
 
 def main():
+    """
+    Main function containing run loop.
+
+    - Initializes connection to redis queue
+    - Initializes connection to dbs
+    - Pops task from redis queue and processes them
+    """
     # Timeout for Redis Connection
     r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True, socket_connect_timeout=5)
 

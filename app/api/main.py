@@ -43,6 +43,15 @@ r = None
 
 
 def get_db_index(task_id) -> int:
+    """
+    Calculates db index based on the id's hash.
+
+    Args:
+        task_id: The task ID used to determine the target database.
+
+    Returns:
+        The db index.
+    """
     if isinstance(task_id, str):
         task_id = uuid.UUID(task_id)
     digest = hashlib.sha256(task_id.bytes).digest()
@@ -170,7 +179,7 @@ async def multi_tenant_fairness_middleware(request: Request, call_next):
 
     Implements three layers of protection:
     1. **Global Hard Limit**: Rejects requests if the total active requests exceed `GLOBAL_MAX_REQUESTS`.
-    2. **Client Hard Burst Limit**: Enforces a strict per-client limit (`CLIENT_BURST_LIMIT`) to prevent noisy neighbors.
+    2. **Client Hard Burst Limit**: Enforces a strict per-client limit (`CLIENT_BURST_LIMIT`).
     3. **Client Soft Limit**: Only activates when the system is under heavy load (`active_requests >= GLOBAL_THROTTLE_THRESHOLD`).
        If the client's request count exceeds `CLIENT_SOFT_LIMIT`, further requests are throttled.
 
@@ -217,7 +226,7 @@ class ImageRequest(BaseModel):
 @app.post("/classify")
 def classify_image(req: ImageRequest):
     """ "
-    Accepts an image, stores it in the queue asynchronously, and ensures idempotency.
+    Accepts an image, stores it in the queue and db, and ensures idempotency.
 
     Implements backpressure by checking if the Redis queue is full. If so, returns a 503 response.
     Uses an idempotency key (`task_id`) to prevent duplicate processing of the same request.

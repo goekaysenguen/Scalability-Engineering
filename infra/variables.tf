@@ -1,7 +1,7 @@
 variable "project_id" {
   description = "Google Cloud Console Project Id"
   type        = string
-  default     = "scalability-engineering"
+  default     = "scalability-engineering" # change to your project id
 }
 
 variable "cluster_size" {
